@@ -18,6 +18,16 @@
       "type": "shell",
       "command": "streamlit run dashboard_app.py",
       "problemMatcher": []
+    },
+    {
+      "label": "Git Push to GitHub",
+      "type": "shell",
+      "command": "git add . && git commit -m \"Auto update\" && git push",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
     }
   ]
 }
