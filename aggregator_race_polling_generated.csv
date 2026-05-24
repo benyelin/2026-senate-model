@@ -1,0 +1,2 @@
+state,source_name,url,status,polling_margin_dem,raw_row
+Georgia,RCP Georgia Senate,https://www.realclearpolitics.com/epolls/2026/senate/ga/2026_georgia_senate_taylor_green_vs_ossoff-8717.html,error: HTTPError: 403 Client Error: HTTP Forbidden for url: https://www.realclearpolitics.com/epolls/2026/senate/ga/2026_georgia_senate_taylor_green_vs_ossoff-8717.html,,

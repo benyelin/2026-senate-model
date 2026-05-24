@@ -1,0 +1,5 @@
+source_type,state,source_name,url,enabled,notes
+national_generic_ballot,,FiftyPlusOne Generic Ballot,https://fiftyplusone.news/polls/generic-ballot/generic-ballot,1,Parses current generic ballot text where available
+national_generic_ballot,,Silver Bulletin Generic Ballot,https://www.natesilver.net/p/generic-ballot-average-2026-nate-silver-bulletin-congress-polls,0,May require subscription or blocked access; use if accessible locally
+senate_race,Georgia,RCP Georgia Senate,https://www.realclearpolitics.com/epolls/2026/senate/ga/2026_georgia_senate_taylor_green_vs_ossoff-8717.html,1,Example RCP race page; update URL if matchup changes
+senate_race,,270toWin Latest Senate Polls,https://www.270towin.com/polls/latest-2026-senate-election-polls/,0,Landing page; useful for manually finding state polling pages
