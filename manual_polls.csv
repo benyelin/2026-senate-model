@@ -1,0 +1,4 @@
+race,state,chamber,pollster,pollster_grade,house_effect_dem,start_date,end_date,sample_size,sample_type,dem_candidate,rep_candidate,ind_candidate,other_candidate,dem_pct,rep_pct,ind_pct,other_pct,undecided_pct,notes
+ME Senate,ME,Senate,Pan Atlantic,B,0,2026-05-08,2026-05-18,827,LV,Platner,Collins,,,48.0,41.0,0.0,0.0,11.0,
+FL Senate,FL,Senate,Change Research,B,0,2026-05-13,2026-05-16,1593,LV,Vindman,Moody,,,47.0,45.0,0.0,0.0,8.0,
+NC Senate,NC,Senate,Change Research,B,0,2026-05-04,2026-05-08,947,LV,Cooper,Whatley,,,49.0,42.0,0.0,0.0,9.0,
