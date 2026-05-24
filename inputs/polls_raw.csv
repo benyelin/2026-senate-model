@@ -1,0 +1,10 @@
+state,pollster,start_date,end_date,dem_candidate,gop_candidate,dem_share,gop_share,sample_size,pollster_rating,mode,sponsor,notes
+Georgia,Example Poll A,2026-04-28,2026-05-02,Jon Ossoff,Republican nominee TBD,48,46,900,B+,online,,sample placeholder poll
+Georgia,Example Poll B,2026-05-08,2026-05-11,Jon Ossoff,Republican nominee TBD,47,47,750,B,phone,,sample placeholder poll
+North Carolina,Example Poll A,2026-04-20,2026-04-24,Democratic nominee TBD,Republican nominee TBD,45,47,800,B,online,,sample placeholder poll
+North Carolina,Example Poll B,2026-05-05,2026-05-09,Democratic nominee TBD,Republican nominee TBD,46,47,700,B-,ivr,,sample placeholder poll
+Maine,Example Poll A,2026-04-25,2026-04-29,Graham Platner / David Costello primary,Susan Collins,45,44,650,B,online,,sample placeholder poll
+Texas,Example Poll A,2026-05-01,2026-05-05,James Talarico,John Cornyn / Ken Paxton runoff,43,48,1000,B+,online,,sample placeholder poll
+Ohio,Example Poll A,2026-04-26,2026-04-30,Sherrod Brown,Jon Husted,44,48,850,B,phone,,sample placeholder poll
+Florida,Example Poll A,2026-05-01,2026-05-05,Angie Nixon / Alexander Vindman primary,Ashley Moody,42,49,900,B,online,,sample placeholder poll
+Maine,Pan Atlantic,2026-05-08,2026-05-18,Graham Platner,Susan Collins,48,41,827,B,online,,

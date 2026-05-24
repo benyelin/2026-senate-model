@@ -1,0 +1,16 @@
+{
+  "n_sims": 50000,
+  "days_out": 163,
+  "expected_dem_seats": 50.91048,
+  "median_dem_seats": 51.0,
+  "dem_control_probability": 0.53442,
+  "dem_control_threshold": 51,
+  "dem_baseline_seats": 34,
+  "total_error_sd": 5.611111111111111,
+  "national_error_sd": 4.732443621824231,
+  "race_error_sd": 3.0147214245249447,
+  "implied_correlation": 0.7113333333333333,
+  "national_environment_margin": 10.8,
+  "polling_weight": 0.3877777777777778,
+  "fundamentals_weight": 0.6122222222222222
+}
