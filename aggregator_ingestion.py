@@ -265,11 +265,9 @@ def update_polling_from_aggregators(input_dir: str | Path = "inputs") -> pd.Data
     out = pd.DataFrame(out_rows)
     out.to_csv(input_dir / "aggregator_race_polling_generated.csv", index=False)
 
-    # Add parseable rows to polls_raw.csv as synthetic aggregator rows.
-    polls_path = input_dir / "polls_raw.csv"
-    polls = pd.read_csv(polls_path) if polls_path.exists() else pd.DataFrame()
-
-    manual_polls_path = "outputs/manual_polls_clean.csv"
+    # Do not write aggregator polling into polls_raw.csv.
+    # Manual polls are now the only polling source.
+    return out
 
 if Path(manual_polls_path).exists():
     manual_polls = pd.read_csv(manual_polls_path)

@@ -1,9 +1,25 @@
 from pathlib import Path
-import argparse
 import pandas as pd
 
 
-def ingest_manual_polls(input_dir="inputs", output_dir="outputs", as_of=None):
+def update_race_inputs_from_polls(
+    input_dir="inputs",
+    output_dir="outputs",
+    as_of=None,
+    as_of_date=None,
+    half_life_days=None,
+):    """
+    Manual-only polling ingestion.
+
+    Reads:
+        outputs/manual_polls_clean.csv
+
+    Writes:
+        inputs/polling_averages_generated.csv
+
+    If no manual polls exist, writes an empty polling averages file.
+    """
+
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
 
@@ -19,20 +35,28 @@ def ingest_manual_polls(input_dir="inputs", output_dir="outputs", as_of=None):
         "total_poll_weight",
     ]
 
+    input_dir.mkdir(parents=True, exist_ok=True)
+
     if not manual_path.exists():
-        pd.DataFrame(columns=columns).to_csv(out_path, index=False)
+        avgs = pd.DataFrame(columns=columns)
+        avgs.to_csv(out_path, index=False)
         print("No manual polls found. Wrote empty polling averages.")
-        return
+        return avgs
 
     polls = pd.read_csv(manual_path)
 
     if polls.empty:
-        pd.DataFrame(columns=columns).to_csv(out_path, index=False)
+        avgs = pd.DataFrame(columns=columns)
+        avgs.to_csv(out_path, index=False)
         print("Manual polls file is empty. Wrote empty polling averages.")
-        return
+        return avgs
 
-    # Use Dem-vs-Rep margin for model partisan control.
-    # This avoids old aggregator/imported polling entirely.
+    required_cols = ["state", "dem_pct", "rep_pct"]
+    missing = [c for c in required_cols if c not in polls.columns]
+
+    if missing:
+        raise ValueError(f"Manual polls file missing required columns: {missing}")
+
     polls["polling_margin_dem"] = polls["dem_pct"] - polls["rep_pct"]
 
     if "poll_weight" not in polls.columns:
@@ -41,7 +65,20 @@ def ingest_manual_polls(input_dir="inputs", output_dir="outputs", as_of=None):
     if "days_old" not in polls.columns:
         polls["days_old"] = 0
 
-    polls["end_date"] = pd.to_datetime(polls["end_date"], errors="coerce")
+    polls["poll_weight"] = pd.to_numeric(
+        polls["poll_weight"],
+        errors="coerce"
+    ).fillna(1.0)
+
+    polls["days_old"] = pd.to_numeric(
+        polls["days_old"],
+        errors="coerce"
+    ).fillna(0)
+
+    polls["end_date"] = pd.to_datetime(
+        polls["end_date"],
+        errors="coerce"
+    )
 
     def weighted_avg(group):
         weights = group["poll_weight"].fillna(1.0)
@@ -68,22 +105,7 @@ def ingest_manual_polls(input_dir="inputs", output_dir="outputs", as_of=None):
     )
 
     avgs.to_csv(out_path, index=False)
+
     print(f"Wrote manual-only polling averages to {out_path}")
 
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input-dir", default="inputs")
-    parser.add_argument("--output-dir", default="outputs")
-    parser.add_argument("--as-of", default=None)
-    args = parser.parse_args()
-
-    ingest_manual_polls(
-        input_dir=args.input_dir,
-        output_dir=args.output_dir,
-        as_of=args.as_of,
-    )
-
-
-if __name__ == "__main__":
-    main()
+    return avgs
