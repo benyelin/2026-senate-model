@@ -265,39 +265,6 @@ def update_polling_from_aggregators(input_dir: str | Path = "inputs") -> pd.Data
     out = pd.DataFrame(out_rows)
     out.to_csv(input_dir / "aggregator_race_polling_generated.csv", index=False)
 
-    # Add parseable rows to polls_raw.csv as synthetic aggregator rows.
-    polls_path = input_dir / "polls_raw.csv"
-    polls = pd.read_csv(polls_path) if polls_path.exists() else pd.DataFrame()
-
-    manual_polls_path = "outputs/manual_polls_clean.csv"
-
-if Path(manual_polls_path).exists():
-    manual_polls = pd.read_csv(manual_polls_path)
-    polls = pd.concat([polls, manual_polls], ignore_index=True)
-    synthetic_rows = []
-    for _, r in out.dropna(subset=["polling_margin_dem"]).iterrows():
-        margin = float(r["polling_margin_dem"])
-        # Use 50 +/- margin/2 as synthetic two-party shares.
-        dem = 50 + margin / 2
-        gop = 50 - margin / 2
-        synthetic_rows.append({
-            "state": r["state"],
-            "pollster": r["source_name"],
-            "start_date": pd.Timestamp.today().date().isoformat(),
-            "end_date": pd.Timestamp.today().date().isoformat(),
-            "dem_candidate": "Aggregator average",
-            "gop_candidate": "Aggregator average",
-            "dem_share": dem,
-            "gop_share": gop,
-            "sample_size": "",
-            "pollster_rating": "B",
-            "mode": "aggregator",
-            "sponsor": "",
-            "notes": f"Generated from {r['url']}",
-        })
-
-    if synthetic_rows:
-        polls = pd.concat([polls, pd.DataFrame(synthetic_rows)], ignore_index=True)
-        polls.to_csv(polls_path, index=False)
-
+    # Do not write aggregator polling into polls_raw.csv.
+    # Manual polls are now the only polling source.
     return out
