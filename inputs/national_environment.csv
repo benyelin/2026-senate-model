@@ -1,5 +1,5 @@
 parameter,value,description
-generic_ballot_dem_margin,6.9,Democratic margin on generic congressional ballot
+generic_ballot_dem_margin,7.0,Democratic margin on generic congressional ballot
 presidential_approval,38.9,Presidential approval percentage
 approval_slope,0.25,Each point above/below 50 shifts national environment by this many points
 midterm_effect_dem,1.0,Midterm effect for Democrats; positive if GOP holds presidency
