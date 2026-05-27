@@ -28,6 +28,38 @@
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "Update National Environment",
+      "type": "shell",
+      "command": "python3 update_national_environment.py --generic-ballot ${input:genericBallot} --approval ${input:presApproval} --disapproval ${input:presDisapproval} --midterm ${input:midtermAdjustment} --notes \"Manual update from latest generic ballot and presidential approval averages.\"",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "genericBallot",
+      "type": "promptString",
+      "description": "Generic ballot margin, Democratic minus Republican",
+      "default": "5.5"
+    },
+    {
+      "id": "presApproval",
+      "type": "promptString",
+      "description": "Presidential approval percentage",
+      "default": "39.6"
+    },
+    {
+      "id": "presDisapproval",
+      "type": "promptString",
+      "description": "Presidential disapproval percentage",
+      "default": "57.6"
+    },
+    {
+      "id": "midtermAdjustment",
+      "type": "promptString",
+      "description": "Midterm adjustment in Democratic-margin terms",
+      "default": "1.0"
     }
   ]
 }

@@ -145,6 +145,36 @@ def run_forecast(
     races, national, calibration = load_inputs(input_dir)
     race_table = prepare_race_table(races, national, calibration, config)
 
+    # Read national environment from the new wide-format national_environment.csv.
+    # This is primarily for forecast_summary.csv and dashboard display.
+    national_environment_margin_for_summary = 0.0
+
+    if not national.empty:
+        if "national_environment_margin_dem" in national.columns:
+            env_value = pd.to_numeric(
+                national.iloc[-1]["national_environment_margin_dem"],
+                errors="coerce"
+            )
+
+            if pd.notna(env_value):
+                national_environment_margin_for_summary = float(env_value)
+
+        elif "parameter" in national.columns and "value" in national.columns:
+            env_rows = national[
+                national["parameter"].astype(str) == "national_environment_margin_dem"
+            ]
+
+            if not env_rows.empty:
+                env_value = pd.to_numeric(
+                    env_rows.iloc[-1]["value"],
+                    errors="coerce"
+                )
+
+                if pd.notna(env_value):
+                    national_environment_margin_for_summary = float(env_value)
+
+    race_table["national_environment_margin"] = national_environment_margin_for_summary
+
     days_out = compute_days_out(config)
     total_error_sd = _interp(calibration, days_out, "total_error_sd", default=config.default_total_error_sd)
     corr = _interp(calibration, days_out, "correlation", default=config.default_correlation)

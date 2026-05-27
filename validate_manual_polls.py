@@ -1,4 +1,3 @@
-cat > validate_manual_polls.py <<'PY'
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -50,16 +49,8 @@ POLLSTER_GRADE_WEIGHTS = {
 
 
 def pct_to_number(x):
-    """
-    Converts percentages to numeric values.
-
-    Enter percentages as normal percentages:
-    48.4 means 48.4%.
-    0.8 means 0.8%.
-    """
     if pd.isna(x) or x == "":
         return 0.0
-
     return float(x)
 
 
@@ -92,9 +83,7 @@ def normalize_manual_polls():
     errors = []
     warnings = []
 
-    optional_cols = ["ind_candidate", "other_candidate", "notes"]
-
-    for col in optional_cols:
+    for col in ["ind_candidate", "other_candidate", "notes"]:
         if col not in df.columns:
             df[col] = ""
 
@@ -115,7 +104,6 @@ def normalize_manual_polls():
         df[col] = df[col].fillna("").astype(str).str.strip()
 
     df["state"] = df["state"].str.upper()
-
     df["pollster_grade"] = df["pollster_grade"].apply(normalize_grade)
 
     df["house_effect_dem"] = pd.to_numeric(
@@ -146,9 +134,6 @@ def normalize_manual_polls():
         if pd.isna(row["sample_size"]) or row["sample_size"] <= 0:
             errors.append(f"Row {row_num}: invalid sample_size")
 
-        if pd.notna(row["sample_size"]) and row["sample_size"] < 300:
-            warnings.append(f"Row {row_num}: small sample size ({row['sample_size']})")
-
         pct_sum = sum(row[c] for c in PCT_COLUMNS)
 
         if pct_sum < 95 or pct_sum > 105:
@@ -157,11 +142,6 @@ def normalize_manual_polls():
                 f"(race={row.get('race')}, state={row.get('state')}, pollster={row.get('pollster')}; "
                 f"dem={row.get('dem_pct')}, rep={row.get('rep_pct')}, ind={row.get('ind_pct')}, "
                 f"other={row.get('other_pct')}, undecided={row.get('undecided_pct')})"
-            )
-
-        if row["pollster_grade"] == "Unknown":
-            warnings.append(
-                f"Row {row_num}: missing or unrecognized pollster_grade; using Unknown weight"
             )
 
     duplicate_cols = [
@@ -178,8 +158,6 @@ def normalize_manual_polls():
         "other_pct",
         "undecided_pct",
     ]
-
-    duplicate_cols = [c for c in duplicate_cols if c in df.columns]
 
     duplicate_mask = df.duplicated(subset=duplicate_cols, keep=False)
 
@@ -208,33 +186,21 @@ def normalize_manual_polls():
     leader_margins = []
 
     for _, row in df.iterrows():
-        vals = {
-            label: row[col]
-            for label, col in vote_cols.items()
-        }
-
+        vals = {label: row[col] for label, col in vote_cols.items()}
         sorted_vals = sorted(vals.items(), key=lambda x: x[1], reverse=True)
 
-        leader = sorted_vals[0][0]
-        leader_pct = sorted_vals[0][1]
-        second_pct = sorted_vals[1][1]
-        leader_margin = leader_pct - second_pct
-
-        leaders.append(leader)
-        leader_pcts.append(leader_pct)
-        second_pcts.append(second_pct)
-        leader_margins.append(leader_margin)
+        leaders.append(sorted_vals[0][0])
+        leader_pcts.append(sorted_vals[0][1])
+        second_pcts.append(sorted_vals[1][1])
+        leader_margins.append(sorted_vals[0][1] - sorted_vals[1][1])
 
     df["leader"] = leaders
     df["leader_pct"] = leader_pcts
     df["second_place_pct"] = second_pcts
     df["leader_margin"] = leader_margins
 
-    # Raw Dem-vs-Rep margin
     df["dem_margin"] = df["dem_pct"] - df["rep_pct"]
 
-    # Undecided adjustment:
-    # High undecided polls should not be treated as equally firm.
     df["allocated_share"] = (
         df["dem_pct"]
         + df["rep_pct"]
@@ -252,9 +218,6 @@ def normalize_manual_polls():
         df["dem_margin"] * df["undecided_discount"]
     )
 
-    # House effect:
-    # Positive house_effect_dem means pollster tends to favor Democrats,
-    # so subtract it from the Democratic margin.
     df["house_effect_adjusted_dem_margin"] = (
         df["dem_margin"] - df["house_effect_dem"]
     )
@@ -292,10 +255,7 @@ def normalize_manual_polls():
         .fillna(POLLSTER_GRADE_WEIGHTS["Unknown"])
     )
 
-    df["poll_weight"] = (
-        df["base_poll_weight"]
-        * df["pollster_quality_weight"]
-    )
+    df["poll_weight"] = df["base_poll_weight"] * df["pollster_quality_weight"]
 
     clean_cols = [
         "race",
@@ -340,10 +300,6 @@ def normalize_manual_polls():
         "notes",
     ]
 
-    for col in clean_cols:
-        if col not in df.columns:
-            df[col] = ""
-
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     df[clean_cols].to_csv(OUT_PATH, index=False)
 
@@ -359,4 +315,3 @@ def normalize_manual_polls():
 
 if __name__ == "__main__":
     normalize_manual_polls()
-PY

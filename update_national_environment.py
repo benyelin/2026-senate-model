@@ -56,8 +56,8 @@ def main():
     parser.add_argument(
         "--disapproval",
         type=float,
-        default=None,
-        help="Presidential disapproval percentage."
+        required=True,
+        help="Presidential disapproval percentage. Net approval is calculated automatically as approval minus disapproval."
     )
 
     parser.add_argument(
@@ -91,10 +91,7 @@ def main():
 
     INPUTS.mkdir(parents=True, exist_ok=True)
 
-    if args.disapproval is not None:
-        net_approval = args.approval - args.disapproval
-    else:
-        net_approval = None
+    net_approval = args.approval - args.disapproval
 
     if args.approval_adjustment is not None:
         approval_adjustment_dem = args.approval_adjustment
