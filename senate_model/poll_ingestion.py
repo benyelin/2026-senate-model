@@ -18,7 +18,9 @@ def update_race_inputs_from_polls(
     Writes:
         inputs/polling_averages_generated.csv
 
-    If no manual polls exist, writes an empty polling averages file.
+    Uses final_poll_margin_dem when available, which includes:
+    - undecided-voter discount
+    - house-effect adjustment
     """
 
     input_dir = Path(input_dir)
@@ -58,7 +60,24 @@ def update_race_inputs_from_polls(
     if missing:
         raise ValueError(f"Manual polls file missing required columns: {missing}")
 
-    polls["polling_margin_dem"] = polls["dem_pct"] - polls["rep_pct"]
+    polls["state"] = polls["state"].astype(str).str.strip().str.upper()
+
+    # Use the fully adjusted poll margin if available.
+    if "final_poll_margin_dem" in polls.columns:
+        polls["polling_margin_dem"] = pd.to_numeric(
+            polls["final_poll_margin_dem"],
+            errors="coerce"
+        )
+    elif "house_effect_adjusted_dem_margin" in polls.columns:
+        polls["polling_margin_dem"] = pd.to_numeric(
+            polls["house_effect_adjusted_dem_margin"],
+            errors="coerce"
+        )
+    else:
+        polls["polling_margin_dem"] = (
+            pd.to_numeric(polls["dem_pct"], errors="coerce")
+            - pd.to_numeric(polls["rep_pct"], errors="coerce")
+        )
 
     if "poll_weight" not in polls.columns:
         polls["poll_weight"] = 1.0
@@ -80,6 +99,14 @@ def update_race_inputs_from_polls(
         polls["end_date"],
         errors="coerce"
     )
+
+    polls = polls.dropna(subset=["polling_margin_dem"])
+
+    if polls.empty:
+        avgs = pd.DataFrame(columns=columns)
+        avgs.to_csv(out_path, index=False)
+        print("Manual polls had no usable margins. Wrote empty polling averages.")
+        return avgs
 
     def weighted_avg(group):
         weights = group["poll_weight"].fillna(1.0)

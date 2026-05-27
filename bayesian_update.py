@@ -28,7 +28,7 @@ def main():
 
     print("\nBayesian update generated:")
     print(out.to_string(index=False))
-    print("\nUpdated race_inputs.csv using posterior margins.")
+    print("\nWrote Bayesian update file; race_inputs.csv was not overwritten.")
     print("Audit file: inputs/bayesian_update_generated.csv")
 
 

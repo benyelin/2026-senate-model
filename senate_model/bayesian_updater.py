@@ -125,5 +125,5 @@ def run_bayesian_update(
 
     races_updated["fundamentals_margin_dem"] = races_updated["bayesian_model_margin_dem"]
     races_updated = races_updated.drop(columns=["posterior_margin_dem", "posterior_sd"], errors="ignore")
-    races_updated.to_csv(input_dir / "race_inputs.csv", index=False)
+    # Do not overwrite race_inputs.csv; keep it as a human-edited input file.
     return output
