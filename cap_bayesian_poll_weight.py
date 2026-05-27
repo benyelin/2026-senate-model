@@ -32,11 +32,11 @@ def poll_count_multiplier(poll_count):
     if poll_count <= 0:
         return 0.0
     if poll_count == 1:
-        return 0.55
+        return 0.30
     if poll_count == 2:
-        return 0.70
+        return 0.55
     if poll_count == 3:
-        return 0.85
+        return 0.75
     return 1.0
 
 
@@ -44,7 +44,7 @@ def minimum_uncertainty_for_days_out(days_out):
     if days_out > 180:
         return 7.5
     if days_out > 120:
-        return 6.75
+        return 8.0
     if days_out > 60:
         return 5.5
     if days_out > 30:

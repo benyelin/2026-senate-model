@@ -40,6 +40,7 @@ def main():
         run(cmd)
     run([py, "ingest_polls.py", "--as-of", as_of])
     run([py, "bayesian_update.py", "--days-out", str(days_out)])
+    run([py, "cap_bayesian_poll_weight.py"])
     run([py, "run_model.py", "--today", as_of, "--sims", str(args.sims)])
     run([py, "scenario_runner.py"])
 

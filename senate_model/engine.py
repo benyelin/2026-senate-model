@@ -111,6 +111,23 @@ def prepare_race_table(
         out["polling_margin_dem"].astype(float) * polling_weight
         + out["adjusted_fundamentals_margin_dem"].astype(float) * fundamentals_weight
     )
+    # Prefer calibrated Bayesian margin when available.
+    # This prevents the simulation engine from ignoring:
+    # - early-cycle polling caps
+    # - poll-count penalties
+    # - undecided-adjusted polling margins
+    # - Bayesian model calibration
+    if "bayesian_model_margin_dem" in out.columns:
+        bayes_margin = pd.to_numeric(
+            out["bayesian_model_margin_dem"],
+            errors="coerce"
+        )
+
+        out["model_margin_dem"] = bayes_margin.where(
+            bayes_margin.notna(),
+            out["model_margin_dem"]
+        )
+
     out["pre_sim_dem_win_prob"] = 1 / (1 + np.exp(-out["model_margin_dem"] / config.probability_scale))
     return out
 
@@ -141,9 +158,40 @@ def run_forecast(
     tier_multiplier = race_table['tier_error_multiplier'].astype(float).to_numpy() if 'tier_error_multiplier' in race_table.columns else np.ones(n_races)
 
     national_error = rng.normal(0.0, national_sd, size=(config.n_sims, 1))
-    race_error = rng.normal(0.0, race_sd * tier_multiplier.reshape(1, n_races), size=(config.n_sims, n_races))
 
     base_margins = race_table["model_margin_dem"].to_numpy(dtype=float).reshape(1, n_races)
+
+    # Prefer calibrated Bayesian posterior uncertainty when available.
+    # This keeps early-cycle probabilities from becoming too confident,
+    # especially when there are only one or two polls.
+    if "bayesian_posterior_sd" in race_table.columns:
+        posterior_sd = pd.to_numeric(
+            race_table["bayesian_posterior_sd"],
+            errors="coerce"
+        )
+
+        if posterior_sd.notna().any():
+            race_uncertainty = posterior_sd.fillna(
+                race_sd * race_table["tier_error_multiplier"].astype(float)
+            ).to_numpy(dtype=float)
+        else:
+            race_uncertainty = (
+                config.base_error_sd
+                * race_table["tier_error_multiplier"].astype(float)
+            ).to_numpy(dtype=float)
+    else:
+        race_uncertainty = (
+            config.base_error_sd
+            * race_table["tier_error_multiplier"].astype(float)
+        ).to_numpy(dtype=float)
+
+    # Generate race-specific error using the calibrated uncertainty.
+    race_error = rng.normal(
+        0.0,
+        race_uncertainty.reshape(1, n_races),
+        size=(config.n_sims, n_races)
+    )
+
     simulated_margins = base_margins + national_error + race_error
     dem_wins = simulated_margins > 0
 
