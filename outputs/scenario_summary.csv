@@ -1,10 +1,4 @@
-manual_national_swing_dem,expected_dem_seats,dem_control_probability
--4,46.8254,0.1182
--3,46.8254,0.1182
--2,46.8254,0.1182
--1,46.8254,0.1182
-0,46.8254,0.1182
-1,46.8254,0.1182
-2,46.8254,0.1182
-3,46.8254,0.1182
-4,46.8254,0.1182
+scenario,national_environment_margin_dem,current_dem_control_probability,current_expected_dem_seats
+Current environment,5.5,0.20855,47.7881
+Democratic environment +2,7.5,0.20855,47.7881
+Republican environment +2,3.5,0.20855,47.7881

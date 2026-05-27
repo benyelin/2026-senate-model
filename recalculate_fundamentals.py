@@ -49,6 +49,7 @@ def read_national_environment():
         )
 
         if pd.notna(val):
+            print(f"Using national_environment_margin_dem directly: {float(val):.2f}")
             return float(val)
 
     generic_ballot = 0.0

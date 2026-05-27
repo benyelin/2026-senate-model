@@ -1,6 +1,2 @@
-parameter,value,description
-generic_ballot_dem_margin,7.0,Democratic margin on generic congressional ballot
-presidential_approval,38.6,Presidential approval percentage
-approval_slope,0.25,Each point above/below 50 shifts national environment by this many points
-midterm_effect_dem,1.0,Midterm effect for Democrats; positive if GOP holds presidency
-manual_adjustment,0.0,Manual scenario adjustment in Democratic margin points
+as_of_date,generic_ballot_margin_dem,presidential_approval,president_party,midterm_adjustment_dem,approval_adjustment_dem,national_environment_margin_dem,notes
+2026-05-27,2.0,40.0,R,2.0,1.5,5.5,"Placeholder national environment: D+2 generic ballot, low GOP presidential approval, Democratic midterm advantage."

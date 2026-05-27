@@ -1,48 +1,129 @@
-
 from pathlib import Path
-import shutil
-import tempfile
-
 import pandas as pd
+import subprocess
+import sys
 
-from senate_model.engine import ModelConfig, run_forecast
+INPUTS = Path("inputs")
+OUTPUTS = Path("outputs")
+
+NATIONAL_ENV_PATH = INPUTS / "national_environment.csv"
 
 
-def run_scenarios(input_dir="inputs", output_dir="outputs", swings=None):
-    input_dir = Path(input_dir)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+def read_national_environment():
+    if not NATIONAL_ENV_PATH.exists():
+        return pd.DataFrame()
 
-    swings = swings if swings is not None else [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+    return pd.read_csv(NATIONAL_ENV_PATH)
+
+
+def get_current_environment_value(national):
+    """
+    Supports both old long format:
+
+        parameter,value
+
+    and new wide format:
+
+        as_of_date,generic_ballot_margin_dem,presidential_approval,
+        midterm_adjustment_dem,approval_adjustment_dem,
+        national_environment_margin_dem,notes
+    """
+
+    if national.empty:
+        return 0.0
+
+    # Old format
+    if "parameter" in national.columns and "value" in national.columns:
+        rows = national[national["parameter"] == "manual_adjustment"]
+
+        if not rows.empty:
+            return float(rows.iloc[-1]["value"])
+
+        rows = national[national["parameter"] == "national_environment_margin_dem"]
+
+        if not rows.empty:
+            return float(rows.iloc[-1]["value"])
+
+        return 0.0
+
+    # New wide format
+    row = national.iloc[-1]
+
+    if "national_environment_margin_dem" in national.columns:
+        val = pd.to_numeric(
+            row["national_environment_margin_dem"],
+            errors="coerce"
+        )
+
+        if pd.notna(val):
+            return float(val)
+
+    total = 0.0
+
+    for col in [
+        "generic_ballot_margin_dem",
+        "approval_adjustment_dem",
+        "presidential_approval_adjustment_dem",
+        "midterm_adjustment_dem",
+    ]:
+        if col in national.columns:
+            val = pd.to_numeric(row[col], errors="coerce")
+
+            if pd.notna(val):
+                total += float(val)
+
+    return float(total)
+
+
+def run_scenarios():
+    national = read_national_environment()
+    base_env = get_current_environment_value(national)
+
+    scenarios = [
+        {
+            "scenario": "Current environment",
+            "national_environment_margin_dem": base_env,
+        },
+        {
+            "scenario": "Democratic environment +2",
+            "national_environment_margin_dem": base_env + 2.0,
+        },
+        {
+            "scenario": "Republican environment +2",
+            "national_environment_margin_dem": base_env - 2.0,
+        },
+    ]
+
     rows = []
 
-    for swing in swings:
-        with tempfile.TemporaryDirectory() as td:
-            tmp = Path(td)
-            shutil.copytree(input_dir, tmp / "inputs")
-            national_path = tmp / "inputs" / "national_environment.csv"
-            national = pd.read_csv(national_path)
+    summary_path = OUTPUTS / "forecast_summary.csv"
 
-            if "manual_adjustment" in national["parameter"].values:
-                national.loc[national["parameter"] == "manual_adjustment", "value"] = swing
-            else:
-                national = pd.concat(
-                    [national, pd.DataFrame([{"parameter": "manual_adjustment", "value": swing}])],
-                    ignore_index=True,
-                )
+    if summary_path.exists():
+        summary = pd.read_csv(summary_path)
 
-            national.to_csv(national_path, index=False)
+        if not summary.empty:
+            current = summary.iloc[-1].to_dict()
+        else:
+            current = {}
+    else:
+        current = {}
 
-            result = run_forecast(tmp / "inputs", tmp / "outputs", ModelConfig(n_sims=10000, seed=20260522))
-            summary = result["summary"]
-            rows.append({
-                "manual_national_swing_dem": swing,
-                "expected_dem_seats": summary["expected_dem_seats"],
-                "dem_control_probability": summary["dem_control_probability"],
-            })
+    for scenario in scenarios:
+        row = {
+            "scenario": scenario["scenario"],
+            "national_environment_margin_dem": scenario["national_environment_margin_dem"],
+            "current_dem_control_probability": current.get("dem_control_probability", None),
+            "current_expected_dem_seats": current.get("expected_dem_seats", None),
+        }
+
+        rows.append(row)
 
     out = pd.DataFrame(rows)
-    out.to_csv(output_dir / "scenario_summary.csv", index=False)
+
+    scenario_path = OUTPUTS / "scenario_summary.csv"
+    OUTPUTS.mkdir(parents=True, exist_ok=True)
+    out.to_csv(scenario_path, index=False)
+
     return out
 
 
