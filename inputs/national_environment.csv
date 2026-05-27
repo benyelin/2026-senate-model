@@ -1,2 +1,2 @@
-as_of_date,generic_ballot_margin_dem,presidential_approval,president_party,midterm_adjustment_dem,approval_adjustment_dem,national_environment_margin_dem,notes
-2026-05-27,2.0,40.0,R,2.0,1.5,5.5,"Placeholder national environment: D+2 generic ballot, low GOP presidential approval, Democratic midterm advantage."
+as_of_date,generic_ballot_margin_dem,presidential_approval,presidential_disapproval,presidential_net_approval,president_party,midterm_adjustment_dem,approval_adjustment_dem,national_environment_margin_dem,source_notes
+2026-05-27,5.5,39.6,57.6,-18.0,R,1.0,1.8,8.3,"Generic ballot manually entered; RCP Trump approval average 39.6/57.6; approval adjustment=(45-approval)/3 capped at +/-3."
