@@ -53,9 +53,9 @@ def pct_to_number(x):
     Converts percentages to numeric values.
     Blanks become 0.
 
-    Enter percentages as normal values:
-    48.4 means 48.4%.
-    0.8 means 0.8%.
+    This intentionally does NOT convert 0.8 into 80,
+    because small vote shares like 0.8% are valid.
+    If you mean 48%, enter 48 rather than 0.48.
     """
     if pd.isna(x) or x == "":
         return 0.0
@@ -92,6 +92,7 @@ def normalize_manual_polls():
     errors = []
     warnings = []
 
+    # Ensure optional columns exist
     if "ind_candidate" not in df.columns:
         df["ind_candidate"] = ""
 
@@ -101,6 +102,7 @@ def normalize_manual_polls():
     if "notes" not in df.columns:
         df["notes"] = ""
 
+    # Normalize text fields
     text_cols = [
         "race",
         "state",
@@ -118,17 +120,22 @@ def normalize_manual_polls():
         if col in df.columns:
             df[col] = df[col].fillna("").astype(str).str.strip()
 
-    df["state"] = df["state"].fillna("").astype(str).str.strip().str.upper()
+    df["state"] = df["state"].str.upper()
+
+    # Normalize pollster grade
     df["pollster_grade"] = df["pollster_grade"].apply(normalize_grade)
 
+    # Normalize house effect
     df["house_effect_dem"] = pd.to_numeric(
         df["house_effect_dem"],
         errors="coerce"
     ).fillna(0.0)
 
+    # Normalize percentages
     for col in PCT_COLUMNS:
         df[col] = df[col].apply(pct_to_number)
 
+    # Normalize dates and sample size
     df["start_date"] = pd.to_datetime(
         df["start_date"],
         errors="coerce"
@@ -144,6 +151,7 @@ def normalize_manual_polls():
         errors="coerce"
     )
 
+    # Row-level validation
     for idx, row in df.iterrows():
         row_num = idx + 2
 
@@ -167,6 +175,8 @@ def normalize_manual_polls():
 
         pct_sum = sum(row[c] for c in PCT_COLUMNS)
 
+        # Normal polling tables often round to 99, 100, or 101.
+        # This flags only meaningful problems.
         if pct_sum < 95 or pct_sum > 105:
             warnings.append(
                 f"Row {row_num}: percentages sum to {pct_sum:.1f} "
@@ -180,6 +190,7 @@ def normalize_manual_polls():
                 f"Row {row_num}: missing or unrecognized pollster_grade; using Unknown weight"
             )
 
+    # Duplicate warning
     duplicate_cols = [
         "race",
         "state",
@@ -229,6 +240,7 @@ def normalize_manual_polls():
         today - df["mid_date"]
     ).dt.days
 
+    # Candidate vote columns
     vote_cols = {
         "Dem": "dem_pct",
         "Rep": "rep_pct",
@@ -287,15 +299,20 @@ def normalize_manual_polls():
 
     df["is_three_way_race"] = df["ind_pct"] >= 10
 
+    # House effect placeholder.
+    # Positive means pollster tends to favor Democrats.
+    # Adjusted margin subtracts that pro-Dem house effect.
     df["house_effect_adjusted_dem_margin"] = (
         df["dem_margin"] - df["house_effect_dem"]
     )
 
+    # Base weight: sample size and recency
     df["base_poll_weight"] = (
         np.sqrt(df["sample_size"])
         / (1 + (df["days_old"] / 30))
     )
 
+    # Pollster grade weight
     df["pollster_quality_weight"] = (
         df["pollster_grade"]
         .map(POLLSTER_GRADE_WEIGHTS)
