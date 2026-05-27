@@ -6,13 +6,32 @@ RAW_PATH = Path("inputs/manual_polls.csv")
 OUT_PATH = Path("outputs/manual_polls_clean.csv")
 
 REQUIRED_COLUMNS = [
-    "race", "state", "chamber", "pollster",
-    "start_date", "end_date", "sample_size", "sample_type",
-    "dem_candidate", "rep_candidate",
-    "dem_pct", "rep_pct", "ind_pct", "other_pct", "undecided_pct"
+    "race",
+    "state",
+    "chamber",
+    "pollster",
+    "pollster_grade",
+    "house_effect_dem",
+    "start_date",
+    "end_date",
+    "sample_size",
+    "sample_type",
+    "dem_candidate",
+    "rep_candidate",
+    "dem_pct",
+    "rep_pct",
+    "ind_pct",
+    "other_pct",
+    "undecided_pct",
 ]
 
-PCT_COLUMNS = ["dem_pct", "rep_pct", "ind_pct", "other_pct", "undecided_pct"]
+PCT_COLUMNS = [
+    "dem_pct",
+    "rep_pct",
+    "ind_pct",
+    "other_pct",
+    "undecided_pct",
+]
 
 POLLSTER_GRADE_WEIGHTS = {
     "A+": 1.15,
@@ -25,18 +44,33 @@ POLLSTER_GRADE_WEIGHTS = {
     "C": 0.70,
     "C-": 0.60,
     "D": 0.45,
-    "Unknown": 0.75
+    "Unknown": 0.75,
 }
 
 
 def pct_to_number(x):
+    """
+    Converts percentages to numeric values.
+    Blanks become 0.
+
+    Enter percentages as normal values:
+    48.4 means 48.4%.
+    0.8 means 0.8%.
+    """
     if pd.isna(x) or x == "":
         return 0.0
 
-    x = float(x)
+    return float(x)
 
-    if 0 < x <= 1:
-        x *= 100
+
+def normalize_grade(x):
+    if pd.isna(x) or str(x).strip() == "":
+        return "Unknown"
+
+    x = str(x).strip()
+
+    if x not in POLLSTER_GRADE_WEIGHTS:
+        return "Unknown"
 
     return x
 
@@ -49,19 +83,43 @@ def validate_columns(df):
 
 
 def normalize_manual_polls():
+    if not RAW_PATH.exists():
+        raise FileNotFoundError(f"Could not find {RAW_PATH}")
+
     df = pd.read_csv(RAW_PATH)
     validate_columns(df)
 
     errors = []
     warnings = []
 
-    if "pollster_grade" not in df.columns:
-        df["pollster_grade"] = "Unknown"
+    if "ind_candidate" not in df.columns:
+        df["ind_candidate"] = ""
 
-    df["pollster_grade"] = df["pollster_grade"].fillna("Unknown")
+    if "other_candidate" not in df.columns:
+        df["other_candidate"] = ""
 
-    if "house_effect_dem" not in df.columns:
-        df["house_effect_dem"] = 0.0
+    if "notes" not in df.columns:
+        df["notes"] = ""
+
+    text_cols = [
+        "race",
+        "state",
+        "chamber",
+        "pollster",
+        "sample_type",
+        "dem_candidate",
+        "rep_candidate",
+        "ind_candidate",
+        "other_candidate",
+        "notes",
+    ]
+
+    for col in text_cols:
+        if col in df.columns:
+            df[col] = df[col].fillna("").astype(str).str.strip()
+
+    df["state"] = df["state"].fillna("").astype(str).str.strip().str.upper()
+    df["pollster_grade"] = df["pollster_grade"].apply(normalize_grade)
 
     df["house_effect_dem"] = pd.to_numeric(
         df["house_effect_dem"],
@@ -71,9 +129,20 @@ def normalize_manual_polls():
     for col in PCT_COLUMNS:
         df[col] = df[col].apply(pct_to_number)
 
-    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
-    df["end_date"] = pd.to_datetime(df["end_date"], errors="coerce")
-    df["sample_size"] = pd.to_numeric(df["sample_size"], errors="coerce")
+    df["start_date"] = pd.to_datetime(
+        df["start_date"],
+        errors="coerce"
+    )
+
+    df["end_date"] = pd.to_datetime(
+        df["end_date"],
+        errors="coerce"
+    )
+
+    df["sample_size"] = pd.to_numeric(
+        df["sample_size"],
+        errors="coerce"
+    )
 
     for idx, row in df.iterrows():
         row_num = idx + 2
@@ -92,31 +161,79 @@ def normalize_manual_polls():
             errors.append(f"Row {row_num}: invalid sample_size")
 
         if pd.notna(row["sample_size"]) and row["sample_size"] < 300:
-            warnings.append(f"Row {row_num}: small sample size ({row['sample_size']})")
+            warnings.append(
+                f"Row {row_num}: small sample size ({row['sample_size']})"
+            )
 
         pct_sum = sum(row[c] for c in PCT_COLUMNS)
 
-        if pct_sum < 90 or pct_sum > 105:
-            warnings.append(f"Row {row_num}: percentages sum to {pct_sum:.1f}")
-
-        if row["pollster_grade"] not in POLLSTER_GRADE_WEIGHTS:
+        if pct_sum < 95 or pct_sum > 105:
             warnings.append(
-                f"Row {row_num}: unrecognized pollster_grade '{row['pollster_grade']}', using Unknown weight"
+                f"Row {row_num}: percentages sum to {pct_sum:.1f} "
+                f"(race={row.get('race')}, state={row.get('state')}, pollster={row.get('pollster')}; "
+                f"dem={row.get('dem_pct')}, rep={row.get('rep_pct')}, ind={row.get('ind_pct')}, "
+                f"other={row.get('other_pct')}, undecided={row.get('undecided_pct')})"
             )
 
+        if row["pollster_grade"] == "Unknown":
+            warnings.append(
+                f"Row {row_num}: missing or unrecognized pollster_grade; using Unknown weight"
+            )
+
+    duplicate_cols = [
+        "race",
+        "state",
+        "pollster",
+        "start_date",
+        "end_date",
+        "dem_candidate",
+        "rep_candidate",
+        "dem_pct",
+        "rep_pct",
+        "ind_pct",
+        "other_pct",
+        "undecided_pct",
+    ]
+
+    duplicate_cols = [c for c in duplicate_cols if c in df.columns]
+
+    duplicate_mask = df.duplicated(
+        subset=duplicate_cols,
+        keep=False
+    )
+
+    if duplicate_mask.any():
+        duplicate_rows = [
+            str(i + 2)
+            for i in df.index[duplicate_mask].tolist()
+        ]
+
+        warnings.append(
+            "Possible duplicate polls on CSV rows: "
+            + ", ".join(duplicate_rows)
+        )
+
     if errors:
-        raise ValueError("Validation failed:\n" + "\n".join(errors))
+        raise ValueError(
+            "Validation failed:\n" + "\n".join(errors)
+        )
 
     today = pd.Timestamp.today().normalize()
 
-    df["mid_date"] = df["start_date"] + (df["end_date"] - df["start_date"]) / 2
-    df["days_old"] = (today - df["mid_date"]).dt.days
+    df["mid_date"] = (
+        df["start_date"]
+        + (df["end_date"] - df["start_date"]) / 2
+    )
+
+    df["days_old"] = (
+        today - df["mid_date"]
+    ).dt.days
 
     vote_cols = {
         "Dem": "dem_pct",
         "Rep": "rep_pct",
         "Ind": "ind_pct",
-        "Other": "other_pct"
+        "Other": "other_pct",
     }
 
     leaders = []
@@ -130,7 +247,11 @@ def normalize_manual_polls():
             for label, col in vote_cols.items()
         }
 
-        sorted_vals = sorted(vals.items(), key=lambda x: x[1], reverse=True)
+        sorted_vals = sorted(
+            vals.items(),
+            key=lambda x: x[1],
+            reverse=True
+        )
 
         leader = sorted_vals[0][0]
         leader_pct = sorted_vals[0][1]
@@ -147,19 +268,28 @@ def normalize_manual_polls():
     df["second_place_pct"] = second_pcts
     df["leader_margin"] = leader_margins
 
+    df["dem_margin"] = df["dem_pct"] - df["rep_pct"]
+
     df["dem_margin_vs_top_opponent"] = (
-        df["dem_pct"] - df[["rep_pct", "ind_pct", "other_pct"]].max(axis=1)
+        df["dem_pct"]
+        - df[["rep_pct", "ind_pct", "other_pct"]].max(axis=1)
     )
 
     df["rep_margin_vs_top_opponent"] = (
-        df["rep_pct"] - df[["dem_pct", "ind_pct", "other_pct"]].max(axis=1)
+        df["rep_pct"]
+        - df[["dem_pct", "ind_pct", "other_pct"]].max(axis=1)
     )
 
     df["ind_margin_vs_top_opponent"] = (
-        df["ind_pct"] - df[["dem_pct", "rep_pct", "other_pct"]].max(axis=1)
+        df["ind_pct"]
+        - df[["dem_pct", "rep_pct", "other_pct"]].max(axis=1)
     )
 
     df["is_three_way_race"] = df["ind_pct"] >= 10
+
+    df["house_effect_adjusted_dem_margin"] = (
+        df["dem_margin"] - df["house_effect_dem"]
+    )
 
     df["base_poll_weight"] = (
         np.sqrt(df["sample_size"])
@@ -172,31 +302,62 @@ def normalize_manual_polls():
         .fillna(POLLSTER_GRADE_WEIGHTS["Unknown"])
     )
 
-    df["poll_weight"] = df["base_poll_weight"] * df["pollster_quality_weight"]
+    df["poll_weight"] = (
+        df["base_poll_weight"]
+        * df["pollster_quality_weight"]
+    )
 
     clean_cols = [
-        "race", "state", "chamber", "pollster", "pollster_grade", "house_effect_dem",
-        "start_date", "end_date", "mid_date", "days_old",
-        "sample_size", "sample_type",
-        "dem_candidate", "rep_candidate", "ind_candidate", "other_candidate",
-        "dem_pct", "rep_pct", "ind_pct", "other_pct", "undecided_pct",
-        "leader", "leader_pct", "second_place_pct", "leader_margin",
+        "race",
+        "state",
+        "chamber",
+        "pollster",
+        "pollster_grade",
+        "house_effect_dem",
+        "start_date",
+        "end_date",
+        "mid_date",
+        "days_old",
+        "sample_size",
+        "sample_type",
+        "dem_candidate",
+        "rep_candidate",
+        "ind_candidate",
+        "other_candidate",
+        "dem_pct",
+        "rep_pct",
+        "ind_pct",
+        "other_pct",
+        "undecided_pct",
+        "leader",
+        "leader_pct",
+        "second_place_pct",
+        "leader_margin",
+        "dem_margin",
         "dem_margin_vs_top_opponent",
         "rep_margin_vs_top_opponent",
         "ind_margin_vs_top_opponent",
         "is_three_way_race",
+        "house_effect_adjusted_dem_margin",
         "base_poll_weight",
         "pollster_quality_weight",
         "poll_weight",
-        "notes"
+        "notes",
     ]
 
     for col in clean_cols:
         if col not in df.columns:
             df[col] = ""
 
-    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df[clean_cols].to_csv(OUT_PATH, index=False)
+    OUT_PATH.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    df[clean_cols].to_csv(
+        OUT_PATH,
+        index=False
+    )
 
     print(f"Saved clean manual polls to {OUT_PATH}")
 
@@ -204,6 +365,8 @@ def normalize_manual_polls():
         print("\nWarnings:")
         for w in warnings:
             print(f"- {w}")
+    else:
+        print("No validation warnings.")
 
 
 if __name__ == "__main__":
