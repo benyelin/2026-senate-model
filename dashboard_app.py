@@ -380,3 +380,129 @@ if Path(manual_polls_path).exists():
         st.info("No manual polls found yet.")
 else:
     st.info("No manual poll file found yet. Run validate_manual_polls.py first.")
+    # Model Inputs Audit Panel
+st.subheader("Model Inputs Audit")
+
+race_inputs_path = INPUTS / "race_inputs.csv"
+polling_avgs_path = INPUTS / "polling_averages_generated.csv"
+bayesian_path = INPUTS / "bayesian_update_generated.csv"
+
+if race_inputs_path.exists():
+    race_inputs_audit = pd.read_csv(race_inputs_path)
+else:
+    race_inputs_audit = pd.DataFrame()
+
+if polling_avgs_path.exists():
+    polling_audit = pd.read_csv(polling_avgs_path)
+else:
+    polling_audit = pd.DataFrame()
+
+if bayesian_path.exists():
+    bayesian_audit = pd.read_csv(bayesian_path)
+else:
+    bayesian_audit = pd.DataFrame()
+
+if race_inputs_audit.empty:
+    st.info("No race_inputs.csv file found for audit.")
+else:
+    audit_df = race_inputs_audit.copy()
+
+    # Merge polling averages if available
+    if not polling_audit.empty and "state" in polling_audit.columns:
+        poll_cols = [
+            col for col in [
+                "state",
+                "polling_margin_dem",
+                "poll_count",
+                "latest_poll_end_date",
+                "avg_poll_age_days",
+                "total_poll_weight"
+            ]
+            if col in polling_audit.columns
+        ]
+
+        audit_df = audit_df.merge(
+            polling_audit[poll_cols],
+            on="state",
+            how="left"
+        )
+
+    # Merge Bayesian/final blended model values if available
+    if not bayesian_audit.empty and "state" in bayesian_audit.columns:
+        bayes_cols = [
+            col for col in [
+                "state",
+                "fundamentals_margin_dem",
+                "polling_margin_dem",
+                "posterior_margin_dem",
+                "posterior_sd",
+                "poll_weight",
+                "fundamentals_weight"
+            ]
+            if col in bayesian_audit.columns
+        ]
+
+        # Avoid duplicate polling_margin_dem column name if it appears in both files
+        bayes_for_merge = bayesian_audit[bayes_cols].copy()
+
+        if "polling_margin_dem" in bayes_for_merge.columns and "polling_margin_dem" in audit_df.columns:
+            bayes_for_merge = bayes_for_merge.rename(
+                columns={"polling_margin_dem": "bayesian_polling_margin_dem"}
+            )
+
+        audit_df = audit_df.merge(
+            bayes_for_merge,
+            on="state",
+            how="left"
+        )
+
+    # Create helpful derived flags
+    if "poll_count" in audit_df.columns:
+        audit_df["polling_status"] = audit_df["poll_count"].apply(
+            lambda x: "Manual polling used" if pd.notna(x) and x > 0 else "Fundamentals only"
+        )
+    else:
+        audit_df["polling_status"] = "Fundamentals only"
+
+    if "rcv_enabled" in audit_df.columns:
+        audit_df["rcv_enabled"] = audit_df["rcv_enabled"].astype(str)
+    else:
+        audit_df["rcv_enabled"] = "FALSE"
+
+    if "election_system" not in audit_df.columns:
+        audit_df["election_system"] = "plurality"
+
+    # Choose columns that exist
+    preferred_cols = [
+        "state",
+        "race",
+        "dem_candidate",
+        "rep_candidate",
+        "ind_candidate",
+        "incumbent_party",
+        "open_seat",
+        "election_system",
+        "rcv_enabled",
+        "polling_status",
+        "fundamentals_margin_dem",
+        "polling_margin_dem",
+        "bayesian_polling_margin_dem",
+        "posterior_margin_dem",
+        "posterior_sd",
+        "poll_count",
+        "latest_poll_end_date",
+        "avg_poll_age_days",
+        "total_poll_weight",
+        "poll_weight",
+        "fundamentals_weight"
+    ]
+
+    display_cols = [
+        col for col in preferred_cols
+        if col in audit_df.columns
+    ]
+
+    st.dataframe(
+        audit_df[display_cols],
+        use_container_width=True
+    )
