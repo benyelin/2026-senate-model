@@ -383,6 +383,65 @@ else:
     # Model Inputs Audit Panel
 st.subheader("Model Inputs Audit")
 
+STATE_NAME_TO_ABBR = {
+    "ALABAMA": "AL",
+    "ALASKA": "AK",
+    "ARIZONA": "AZ",
+    "ARKANSAS": "AR",
+    "CALIFORNIA": "CA",
+    "COLORADO": "CO",
+    "CONNECTICUT": "CT",
+    "DELAWARE": "DE",
+    "FLORIDA": "FL",
+    "GEORGIA": "GA",
+    "HAWAII": "HI",
+    "IDAHO": "ID",
+    "ILLINOIS": "IL",
+    "INDIANA": "IN",
+    "IOWA": "IA",
+    "KANSAS": "KS",
+    "KENTUCKY": "KY",
+    "LOUISIANA": "LA",
+    "MAINE": "ME",
+    "MARYLAND": "MD",
+    "MASSACHUSETTS": "MA",
+    "MICHIGAN": "MI",
+    "MINNESOTA": "MN",
+    "MISSISSIPPI": "MS",
+    "MISSOURI": "MO",
+    "MONTANA": "MT",
+    "NEBRASKA": "NE",
+    "NEVADA": "NV",
+    "NEW HAMPSHIRE": "NH",
+    "NEW JERSEY": "NJ",
+    "NEW MEXICO": "NM",
+    "NEW YORK": "NY",
+    "NORTH CAROLINA": "NC",
+    "NORTH DAKOTA": "ND",
+    "OHIO": "OH",
+    "OKLAHOMA": "OK",
+    "OREGON": "OR",
+    "PENNSYLVANIA": "PA",
+    "RHODE ISLAND": "RI",
+    "SOUTH CAROLINA": "SC",
+    "SOUTH DAKOTA": "SD",
+    "TENNESSEE": "TN",
+    "TEXAS": "TX",
+    "UTAH": "UT",
+    "VERMONT": "VT",
+    "VIRGINIA": "VA",
+    "WASHINGTON": "WA",
+    "WEST VIRGINIA": "WV",
+    "WISCONSIN": "WI",
+    "WYOMING": "WY",
+}
+
+
+def normalize_state_for_audit(x):
+    x = str(x).strip().upper()
+    return STATE_NAME_TO_ABBR.get(x, x)
+
+
 race_inputs_path = INPUTS / "race_inputs.csv"
 polling_avgs_path = INPUTS / "polling_averages_generated.csv"
 bayesian_path = INPUTS / "bayesian_update_generated.csv"
@@ -407,7 +466,17 @@ if race_inputs_audit.empty:
 else:
     audit_df = race_inputs_audit.copy()
 
-    # Merge polling averages if available
+    # Normalize state identifiers across all audit inputs
+    if "state" in audit_df.columns:
+        audit_df["state"] = audit_df["state"].apply(normalize_state_for_audit)
+
+    if not polling_audit.empty and "state" in polling_audit.columns:
+        polling_audit["state"] = polling_audit["state"].apply(normalize_state_for_audit)
+
+    if not bayesian_audit.empty and "state" in bayesian_audit.columns:
+        bayesian_audit["state"] = bayesian_audit["state"].apply(normalize_state_for_audit)
+
+    # Merge manual-only polling averages
     if not polling_audit.empty and "state" in polling_audit.columns:
         poll_cols = [
             col for col in [
@@ -416,18 +485,30 @@ else:
                 "poll_count",
                 "latest_poll_end_date",
                 "avg_poll_age_days",
-                "total_poll_weight"
+                "total_poll_weight",
             ]
             if col in polling_audit.columns
         ]
 
+        polling_for_merge = polling_audit[poll_cols].copy()
+
+        polling_for_merge = polling_for_merge.rename(
+            columns={
+                "polling_margin_dem": "manual_polling_margin_dem",
+                "poll_count": "manual_poll_count",
+                "latest_poll_end_date": "manual_latest_poll_end_date",
+                "avg_poll_age_days": "manual_avg_poll_age_days",
+                "total_poll_weight": "manual_total_poll_weight",
+            }
+        )
+
         audit_df = audit_df.merge(
-            polling_audit[poll_cols],
+            polling_for_merge,
             on="state",
             how="left"
         )
 
-    # Merge Bayesian/final blended model values if available
+    # Merge Bayesian/final blended model values
     if not bayesian_audit.empty and "state" in bayesian_audit.columns:
         bayes_cols = [
             col for col in [
@@ -437,15 +518,17 @@ else:
                 "posterior_margin_dem",
                 "posterior_sd",
                 "poll_weight",
-                "fundamentals_weight"
+                "fundamentals_weight",
+                "polling_weight",
+                "final_margin_dem",
+                "model_margin_dem",
             ]
             if col in bayesian_audit.columns
         ]
 
-        # Avoid duplicate polling_margin_dem column name if it appears in both files
         bayes_for_merge = bayesian_audit[bayes_cols].copy()
 
-        if "polling_margin_dem" in bayes_for_merge.columns and "polling_margin_dem" in audit_df.columns:
+        if "polling_margin_dem" in bayes_for_merge.columns:
             bayes_for_merge = bayes_for_merge.rename(
                 columns={"polling_margin_dem": "bayesian_polling_margin_dem"}
             )
@@ -456,23 +539,61 @@ else:
             how="left"
         )
 
-    # Create helpful derived flags
-    if "poll_count" in audit_df.columns:
-        audit_df["polling_status"] = audit_df["poll_count"].apply(
-            lambda x: "Manual polling used" if pd.notna(x) and x > 0 else "Fundamentals only"
+    # Polling status
+    if "manual_poll_count" in audit_df.columns:
+        audit_df["manual_poll_count"] = pd.to_numeric(
+            audit_df["manual_poll_count"],
+            errors="coerce"
+        ).fillna(0)
+
+        audit_df["polling_status"] = audit_df["manual_poll_count"].apply(
+            lambda x: "Manual polling used" if x > 0 else "Fundamentals only"
         )
     else:
+        audit_df["manual_poll_count"] = 0
         audit_df["polling_status"] = "Fundamentals only"
 
-    if "rcv_enabled" in audit_df.columns:
-        audit_df["rcv_enabled"] = audit_df["rcv_enabled"].astype(str)
-    else:
-        audit_df["rcv_enabled"] = "FALSE"
+    # Polling effect diagnostic
+    if "manual_polling_margin_dem" in audit_df.columns:
+        audit_df["manual_polling_margin_dem"] = pd.to_numeric(
+            audit_df["manual_polling_margin_dem"],
+            errors="coerce"
+        )
 
+    if "fundamentals_margin_dem" in audit_df.columns:
+        audit_df["fundamentals_margin_dem"] = pd.to_numeric(
+            audit_df["fundamentals_margin_dem"],
+            errors="coerce"
+        )
+
+    if (
+        "manual_polling_margin_dem" in audit_df.columns
+        and "fundamentals_margin_dem" in audit_df.columns
+    ):
+        audit_df["poll_vs_fundamentals_gap"] = (
+            audit_df["manual_polling_margin_dem"]
+            - audit_df["fundamentals_margin_dem"]
+        )
+
+    if (
+        "posterior_margin_dem" in audit_df.columns
+        and "fundamentals_margin_dem" in audit_df.columns
+    ):
+        audit_df["model_movement_from_fundamentals"] = (
+            audit_df["posterior_margin_dem"]
+            - audit_df["fundamentals_margin_dem"]
+        )
+
+    # RCV/election-system defaults
     if "election_system" not in audit_df.columns:
         audit_df["election_system"] = "plurality"
 
-    # Choose columns that exist
+    if "rcv_enabled" not in audit_df.columns:
+        audit_df["rcv_enabled"] = False
+
+    audit_df["rcv_enabled"] = audit_df["rcv_enabled"].astype(str)
+
+    # Choose display columns that exist
     preferred_cols = [
         "state",
         "race",
@@ -480,21 +601,27 @@ else:
         "rep_candidate",
         "ind_candidate",
         "incumbent_party",
+        "incumbent_running",
         "open_seat",
         "election_system",
         "rcv_enabled",
         "polling_status",
         "fundamentals_margin_dem",
-        "polling_margin_dem",
+        "manual_polling_margin_dem",
         "bayesian_polling_margin_dem",
         "posterior_margin_dem",
+        "final_margin_dem",
+        "model_margin_dem",
         "posterior_sd",
-        "poll_count",
-        "latest_poll_end_date",
-        "avg_poll_age_days",
-        "total_poll_weight",
+        "poll_vs_fundamentals_gap",
+        "model_movement_from_fundamentals",
+        "manual_poll_count",
+        "manual_latest_poll_end_date",
+        "manual_avg_poll_age_days",
+        "manual_total_poll_weight",
         "poll_weight",
-        "fundamentals_weight"
+        "polling_weight",
+        "fundamentals_weight",
     ]
 
     display_cols = [
@@ -506,3 +633,17 @@ else:
         audit_df[display_cols],
         use_container_width=True
     )
+
+    # Summary check
+    manual_states = audit_df.loc[
+        audit_df["polling_status"] == "Manual polling used",
+        "state"
+    ].tolist()
+
+    if manual_states:
+        st.caption(
+            "Manual polling currently detected for: "
+            + ", ".join(sorted(manual_states))
+        )
+    else:
+        st.caption("No manual polling detected in the audit table.") 
