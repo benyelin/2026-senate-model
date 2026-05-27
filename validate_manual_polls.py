@@ -1,3 +1,4 @@
+cat > validate_manual_polls.py <<'PY'
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -51,11 +52,10 @@ POLLSTER_GRADE_WEIGHTS = {
 def pct_to_number(x):
     """
     Converts percentages to numeric values.
-    Blanks become 0.
 
-    This intentionally does NOT convert 0.8 into 80,
-    because small vote shares like 0.8% are valid.
-    If you mean 48%, enter 48 rather than 0.48.
+    Enter percentages as normal percentages:
+    48.4 means 48.4%.
+    0.8 means 0.8%.
     """
     if pd.isna(x) or x == "":
         return 0.0
@@ -92,17 +92,12 @@ def normalize_manual_polls():
     errors = []
     warnings = []
 
-    # Ensure optional columns exist
-    if "ind_candidate" not in df.columns:
-        df["ind_candidate"] = ""
+    optional_cols = ["ind_candidate", "other_candidate", "notes"]
 
-    if "other_candidate" not in df.columns:
-        df["other_candidate"] = ""
+    for col in optional_cols:
+        if col not in df.columns:
+            df[col] = ""
 
-    if "notes" not in df.columns:
-        df["notes"] = ""
-
-    # Normalize text fields
     text_cols = [
         "race",
         "state",
@@ -117,41 +112,24 @@ def normalize_manual_polls():
     ]
 
     for col in text_cols:
-        if col in df.columns:
-            df[col] = df[col].fillna("").astype(str).str.strip()
+        df[col] = df[col].fillna("").astype(str).str.strip()
 
     df["state"] = df["state"].str.upper()
 
-    # Normalize pollster grade
     df["pollster_grade"] = df["pollster_grade"].apply(normalize_grade)
 
-    # Normalize house effect
     df["house_effect_dem"] = pd.to_numeric(
         df["house_effect_dem"],
         errors="coerce"
     ).fillna(0.0)
 
-    # Normalize percentages
     for col in PCT_COLUMNS:
         df[col] = df[col].apply(pct_to_number)
 
-    # Normalize dates and sample size
-    df["start_date"] = pd.to_datetime(
-        df["start_date"],
-        errors="coerce"
-    )
+    df["start_date"] = pd.to_datetime(df["start_date"], errors="coerce")
+    df["end_date"] = pd.to_datetime(df["end_date"], errors="coerce")
+    df["sample_size"] = pd.to_numeric(df["sample_size"], errors="coerce")
 
-    df["end_date"] = pd.to_datetime(
-        df["end_date"],
-        errors="coerce"
-    )
-
-    df["sample_size"] = pd.to_numeric(
-        df["sample_size"],
-        errors="coerce"
-    )
-
-    # Row-level validation
     for idx, row in df.iterrows():
         row_num = idx + 2
 
@@ -169,14 +147,10 @@ def normalize_manual_polls():
             errors.append(f"Row {row_num}: invalid sample_size")
 
         if pd.notna(row["sample_size"]) and row["sample_size"] < 300:
-            warnings.append(
-                f"Row {row_num}: small sample size ({row['sample_size']})"
-            )
+            warnings.append(f"Row {row_num}: small sample size ({row['sample_size']})")
 
         pct_sum = sum(row[c] for c in PCT_COLUMNS)
 
-        # Normal polling tables often round to 99, 100, or 101.
-        # This flags only meaningful problems.
         if pct_sum < 95 or pct_sum > 105:
             warnings.append(
                 f"Row {row_num}: percentages sum to {pct_sum:.1f} "
@@ -190,7 +164,6 @@ def normalize_manual_polls():
                 f"Row {row_num}: missing or unrecognized pollster_grade; using Unknown weight"
             )
 
-    # Duplicate warning
     duplicate_cols = [
         "race",
         "state",
@@ -208,39 +181,20 @@ def normalize_manual_polls():
 
     duplicate_cols = [c for c in duplicate_cols if c in df.columns]
 
-    duplicate_mask = df.duplicated(
-        subset=duplicate_cols,
-        keep=False
-    )
+    duplicate_mask = df.duplicated(subset=duplicate_cols, keep=False)
 
     if duplicate_mask.any():
-        duplicate_rows = [
-            str(i + 2)
-            for i in df.index[duplicate_mask].tolist()
-        ]
-
-        warnings.append(
-            "Possible duplicate polls on CSV rows: "
-            + ", ".join(duplicate_rows)
-        )
+        duplicate_rows = [str(i + 2) for i in df.index[duplicate_mask].tolist()]
+        warnings.append("Possible duplicate polls on CSV rows: " + ", ".join(duplicate_rows))
 
     if errors:
-        raise ValueError(
-            "Validation failed:\n" + "\n".join(errors)
-        )
+        raise ValueError("Validation failed:\n" + "\n".join(errors))
 
     today = pd.Timestamp.today().normalize()
 
-    df["mid_date"] = (
-        df["start_date"]
-        + (df["end_date"] - df["start_date"]) / 2
-    )
+    df["mid_date"] = df["start_date"] + (df["end_date"] - df["start_date"]) / 2
+    df["days_old"] = (today - df["mid_date"]).dt.days
 
-    df["days_old"] = (
-        today - df["mid_date"]
-    ).dt.days
-
-    # Candidate vote columns
     vote_cols = {
         "Dem": "dem_pct",
         "Rep": "rep_pct",
@@ -259,11 +213,7 @@ def normalize_manual_polls():
             for label, col in vote_cols.items()
         }
 
-        sorted_vals = sorted(
-            vals.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )
+        sorted_vals = sorted(vals.items(), key=lambda x: x[1], reverse=True)
 
         leader = sorted_vals[0][0]
         leader_pct = sorted_vals[0][1]
@@ -280,7 +230,39 @@ def normalize_manual_polls():
     df["second_place_pct"] = second_pcts
     df["leader_margin"] = leader_margins
 
+    # Raw Dem-vs-Rep margin
     df["dem_margin"] = df["dem_pct"] - df["rep_pct"]
+
+    # Undecided adjustment:
+    # High undecided polls should not be treated as equally firm.
+    df["allocated_share"] = (
+        df["dem_pct"]
+        + df["rep_pct"]
+        + df["ind_pct"]
+        + df["other_pct"]
+    )
+
+    df["undecided_share"] = df["undecided_pct"]
+
+    df["undecided_discount"] = (
+        df["allocated_share"] / 100
+    ).clip(lower=0.50, upper=1.00)
+
+    df["undecided_adjusted_dem_margin"] = (
+        df["dem_margin"] * df["undecided_discount"]
+    )
+
+    # House effect:
+    # Positive house_effect_dem means pollster tends to favor Democrats,
+    # so subtract it from the Democratic margin.
+    df["house_effect_adjusted_dem_margin"] = (
+        df["dem_margin"] - df["house_effect_dem"]
+    )
+
+    df["final_poll_margin_dem"] = (
+        df["undecided_adjusted_dem_margin"]
+        - df["house_effect_dem"]
+    )
 
     df["dem_margin_vs_top_opponent"] = (
         df["dem_pct"]
@@ -299,20 +281,11 @@ def normalize_manual_polls():
 
     df["is_three_way_race"] = df["ind_pct"] >= 10
 
-    # House effect placeholder.
-    # Positive means pollster tends to favor Democrats.
-    # Adjusted margin subtracts that pro-Dem house effect.
-    df["house_effect_adjusted_dem_margin"] = (
-        df["dem_margin"] - df["house_effect_dem"]
-    )
-
-    # Base weight: sample size and recency
     df["base_poll_weight"] = (
         np.sqrt(df["sample_size"])
         / (1 + (df["days_old"] / 30))
     )
 
-    # Pollster grade weight
     df["pollster_quality_weight"] = (
         df["pollster_grade"]
         .map(POLLSTER_GRADE_WEIGHTS)
@@ -351,11 +324,16 @@ def normalize_manual_polls():
         "second_place_pct",
         "leader_margin",
         "dem_margin",
+        "allocated_share",
+        "undecided_share",
+        "undecided_discount",
+        "undecided_adjusted_dem_margin",
+        "house_effect_adjusted_dem_margin",
+        "final_poll_margin_dem",
         "dem_margin_vs_top_opponent",
         "rep_margin_vs_top_opponent",
         "ind_margin_vs_top_opponent",
         "is_three_way_race",
-        "house_effect_adjusted_dem_margin",
         "base_poll_weight",
         "pollster_quality_weight",
         "poll_weight",
@@ -366,15 +344,8 @@ def normalize_manual_polls():
         if col not in df.columns:
             df[col] = ""
 
-    OUT_PATH.parent.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    df[clean_cols].to_csv(
-        OUT_PATH,
-        index=False
-    )
+    OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    df[clean_cols].to_csv(OUT_PATH, index=False)
 
     print(f"Saved clean manual polls to {OUT_PATH}")
 
@@ -388,3 +359,4 @@ def normalize_manual_polls():
 
 if __name__ == "__main__":
     normalize_manual_polls()
+PY
