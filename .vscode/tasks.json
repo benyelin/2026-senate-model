@@ -99,6 +99,17 @@
         "panel": "shared",
         "clear": false
       }
+    },
+    {
+      "label": "Run Model Health Check",
+      "type": "shell",
+      "command": "python3 model_health_check.py",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
     }
   ],
   "inputs": [
@@ -146,4 +157,3 @@
     }
   ]
 }
-
