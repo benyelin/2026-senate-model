@@ -110,6 +110,17 @@
         "panel": "shared",
         "clear": true
       }
+    },
+    {
+      "label": "Launch Dashboard V2",
+      "type": "shell",
+      "command": "streamlit run dashboard_app_v2.py",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
     }
   ],
   "inputs": [
