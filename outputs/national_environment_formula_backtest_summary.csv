@@ -1,0 +1,5 @@
+formula,description,mean_error,mean_absolute_error,max_absolute_error
+Reduced double-count,0.85*generic + 0.50*approval + 0.50*midterm,0.7593333333333333,1.9933333333333334,3.541666666666666
+Medium,generic + 0.50*approval + 0.50*midterm,0.9333333333333332,2.293333333333333,5.266666666666666
+Generic plus half approval,generic + 0.50*approval,1.0333333333333332,2.3933333333333335,4.766666666666666
+Full additive,generic + approval + midterm,0.9666666666666668,2.606666666666667,6.933333333333334

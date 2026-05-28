@@ -106,10 +106,14 @@ def main():
                 args.approval
             )
 
+    # Reduced double-count formula selected after backtesting.
+    # Rationale: the generic ballot already captures much of the national mood,
+    # presidential approval, and midterm environment. This formula keeps those
+    # signals but avoids fully double-counting them.
     national_environment_margin_dem = (
-        args.generic_ballot
-        + approval_adjustment_dem
-        + args.midterm
+        0.85 * args.generic_ballot
+        + 0.50 * approval_adjustment_dem
+        + 0.50 * args.midterm
     )
 
     row = {
@@ -131,9 +135,10 @@ def main():
     print(f"Updated {NATIONAL_ENV_PATH}")
     print()
     print("National environment calculation:")
-    print(f"  Generic ballot margin Dem:     {args.generic_ballot:+.2f}")
-    print(f"  Approval adjustment Dem:       {approval_adjustment_dem:+.2f}")
-    print(f"  Midterm adjustment Dem:        {args.midterm:+.2f}")
+    print("  Formula: 0.85*generic + 0.50*approval_adjustment + 0.50*midterm")
+    print(f"  Generic ballot margin Dem:     {args.generic_ballot:+.2f} x 0.85 = {0.85 * args.generic_ballot:+.2f}")
+    print(f"  Approval adjustment Dem:       {approval_adjustment_dem:+.2f} x 0.50 = {0.50 * approval_adjustment_dem:+.2f}")
+    print(f"  Midterm adjustment Dem:        {args.midterm:+.2f} x 0.50 = {0.50 * args.midterm:+.2f}")
     print(f"  National environment Dem:      {national_environment_margin_dem:+.2f}")
 
     if net_approval is not None:

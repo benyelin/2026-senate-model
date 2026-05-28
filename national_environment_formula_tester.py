@@ -1,0 +1,285 @@
+from pathlib import Path
+from datetime import date
+import shutil
+import subprocess
+import sys
+import pandas as pd
+import numpy as np
+
+INPUTS = Path("inputs")
+OUTPUTS = Path("outputs")
+
+NATIONAL_ENV_PATH = INPUTS / "national_environment.csv"
+FORMULA_SUMMARY_PATH = OUTPUTS / "national_environment_formula_summary.csv"
+FORMULA_RACES_PATH = OUTPUTS / "national_environment_formula_race_detail.csv"
+
+ELECTION_DAY = date(2026, 11, 3)
+
+KEY_STATES = ["FL", "AK", "TX", "GA", "NC", "OH", "ME"]
+
+
+def compute_days_out():
+    return max(0, (ELECTION_DAY - date.today()).days)
+
+
+def run(cmd):
+    print("$", " ".join(cmd))
+    proc = subprocess.run(cmd)
+    if proc.returncode != 0:
+        raise SystemExit(proc.returncode)
+
+
+def read_current_inputs():
+    if not NATIONAL_ENV_PATH.exists():
+        raise FileNotFoundError(f"Could not find {NATIONAL_ENV_PATH}")
+
+    env = pd.read_csv(NATIONAL_ENV_PATH)
+
+    if env.empty:
+        raise ValueError(f"{NATIONAL_ENV_PATH} is empty")
+
+    row = env.iloc[-1]
+
+    needed = [
+        "generic_ballot_margin_dem",
+        "approval_adjustment_dem",
+        "midterm_adjustment_dem",
+        "national_environment_margin_dem",
+    ]
+
+    missing = [c for c in needed if c not in env.columns]
+
+    if missing:
+        raise ValueError(f"national_environment.csv missing columns: {missing}")
+
+    vals = {}
+
+    for col in needed:
+        val = pd.to_numeric(row[col], errors="coerce")
+
+        if pd.isna(val):
+            raise ValueError(f"{col} is missing or invalid in national_environment.csv")
+
+        vals[col] = float(val)
+
+    return env, vals
+
+
+def build_formulas(vals):
+    generic = vals["generic_ballot_margin_dem"]
+    approval = vals["approval_adjustment_dem"]
+    midterm = vals["midterm_adjustment_dem"]
+    current = vals["national_environment_margin_dem"]
+
+    formulas = [
+        {
+            "formula_name": "Current formula",
+            "description": "Existing national_environment_margin_dem from CSV",
+            "generic_weight": None,
+            "approval_weight": None,
+            "midterm_weight": None,
+            "national_environment_margin_dem": current,
+        },
+        {
+            "formula_name": "Generic ballot only",
+            "description": "generic",
+            "generic_weight": 1.00,
+            "approval_weight": 0.00,
+            "midterm_weight": 0.00,
+            "national_environment_margin_dem": generic,
+        },
+        {
+            "formula_name": "Reduced double-count formula",
+            "description": "0.85*generic + 0.50*approval + 0.50*midterm",
+            "generic_weight": 0.85,
+            "approval_weight": 0.50,
+            "midterm_weight": 0.50,
+            "national_environment_margin_dem": (
+                0.85 * generic
+                + 0.50 * approval
+                + 0.50 * midterm
+            ),
+        },
+        {
+            "formula_name": "Medium formula",
+            "description": "generic + 0.50*approval + 0.50*midterm",
+            "generic_weight": 1.00,
+            "approval_weight": 0.50,
+            "midterm_weight": 0.50,
+            "national_environment_margin_dem": (
+                generic
+                + 0.50 * approval
+                + 0.50 * midterm
+            ),
+        },
+    ]
+
+    return formulas
+
+
+def set_environment_value(value, formula_name):
+    env = pd.read_csv(NATIONAL_ENV_PATH)
+
+    if env.empty:
+        raise ValueError(f"{NATIONAL_ENV_PATH} is empty")
+
+    env.loc[env.index[-1], "national_environment_margin_dem"] = value
+
+    if "source_notes" in env.columns:
+        env.loc[
+            env.index[-1],
+            "source_notes"
+        ] = f"Formula test: {formula_name}; temporary national environment {value:+.2f}"
+
+    env.to_csv(NATIONAL_ENV_PATH, index=False)
+
+
+def run_model_chain(days_out, sims):
+    py = sys.executable
+
+    run([py, "recalculate_fundamentals.py"])
+    run([py, "bayesian_update.py", "--days-out", str(days_out)])
+    run([py, "cap_bayesian_poll_weight.py"])
+    run([py, "run_model.py", "--sims", str(sims)])
+
+
+def read_forecast_summary(formula):
+    summary_path = OUTPUTS / "forecast_summary.csv"
+
+    if not summary_path.exists():
+        raise FileNotFoundError(f"Could not find {summary_path}")
+
+    summary = pd.read_csv(summary_path)
+
+    if summary.empty:
+        raise ValueError(f"{summary_path} is empty")
+
+    row = summary.iloc[-1].to_dict()
+
+    out = {
+        "formula_name": formula["formula_name"],
+        "description": formula["description"],
+        "national_environment_margin_dem": formula["national_environment_margin_dem"],
+        "generic_weight": formula["generic_weight"],
+        "approval_weight": formula["approval_weight"],
+        "midterm_weight": formula["midterm_weight"],
+    }
+
+    for col in [
+        "dem_control_probability",
+        "expected_dem_seats",
+        "median_dem_seats",
+        "total_error_sd",
+        "national_error_sd",
+        "race_error_sd",
+        "implied_correlation",
+        "polling_weight",
+        "fundamentals_weight",
+        "days_out",
+    ]:
+        out[col] = row.get(col, None)
+
+    return out
+
+
+def read_key_races(formula):
+    race_path = OUTPUTS / "race_stats.csv"
+
+    if not race_path.exists():
+        raise FileNotFoundError(f"Could not find {race_path}")
+
+    races = pd.read_csv(race_path)
+
+    if races.empty:
+        raise ValueError(f"{race_path} is empty")
+
+    races["state"] = races["state"].astype(str).str.strip().str.upper()
+
+    keep = races[races["state"].isin(KEY_STATES)].copy()
+
+    keep.insert(0, "formula_name", formula["formula_name"])
+    keep.insert(1, "national_environment_margin_dem", formula["national_environment_margin_dem"])
+
+    cols = [
+        "formula_name",
+        "national_environment_margin_dem",
+        "state",
+        "dem_candidate",
+        "gop_candidate",
+        "fundamentals_margin_dem",
+        "model_margin_dem",
+        "simulated_dem_win_prob",
+        "avg_simulated_margin_dem",
+        "polling_margin_dem",
+        "pre_sim_dem_win_prob",
+    ]
+
+    cols = [c for c in cols if c in keep.columns]
+
+    return keep[cols]
+
+
+def run_formula_test(sims=12000):
+    OUTPUTS.mkdir(parents=True, exist_ok=True)
+
+    env, vals = read_current_inputs()
+    formulas = build_formulas(vals)
+    days_out = compute_days_out()
+
+    backup_path = NATIONAL_ENV_PATH.with_suffix(".csv.formula_test_backup")
+    shutil.copy2(NATIONAL_ENV_PATH, backup_path)
+
+    summary_rows = []
+    race_frames = []
+
+    try:
+        for formula in formulas:
+            name = formula["formula_name"]
+            value = formula["national_environment_margin_dem"]
+
+            print()
+            print(f"=== Formula: {name} ({value:+.2f}) ===")
+
+            set_environment_value(value, name)
+            run_model_chain(days_out=days_out, sims=sims)
+
+            summary_rows.append(read_forecast_summary(formula))
+            race_frames.append(read_key_races(formula))
+
+    finally:
+        shutil.copy2(backup_path, NATIONAL_ENV_PATH)
+        backup_path.unlink(missing_ok=True)
+
+        print()
+        print("Restored original national_environment.csv")
+
+        print()
+        print("Rebuilding normal forecast after formula test...")
+        run_model_chain(days_out=days_out, sims=sims)
+
+    summary = pd.DataFrame(summary_rows)
+    races = pd.concat(race_frames, ignore_index=True) if race_frames else pd.DataFrame()
+
+    summary = summary.sort_values("national_environment_margin_dem")
+    races = races.sort_values(["state", "national_environment_margin_dem"])
+
+    summary.to_csv(FORMULA_SUMMARY_PATH, index=False)
+    races.to_csv(FORMULA_RACES_PATH, index=False)
+
+    print()
+    print(f"Wrote {FORMULA_SUMMARY_PATH}")
+    print(f"Wrote {FORMULA_RACES_PATH}")
+
+    return summary, races
+
+
+if __name__ == "__main__":
+    summary, races = run_formula_test()
+
+    print()
+    print("Formula summary:")
+    print(summary.to_string(index=False))
+
+    print()
+    print("Key race detail:")
+    print(races.to_string(index=False))

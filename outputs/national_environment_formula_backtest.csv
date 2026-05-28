@@ -1,0 +1,21 @@
+year,formula,description,president_party,generic_ballot_margin_dem,presidential_approval,presidential_disapproval,approval_adjustment_dem,midterm_adjustment_dem,predicted_environment_dem,actual_house_margin_dem,error,absolute_error,notes
+2006,Full additive,generic + approval + midterm,R,11.5,38.0,58.0,2.3333333333333335,1.0,14.833333333333334,7.9,6.933333333333334,6.933333333333334,Bush second midterm; strong Democratic wave.
+2006,Reduced double-count,0.85*generic + 0.50*approval + 0.50*midterm,R,11.5,38.0,58.0,2.3333333333333335,1.0,11.441666666666666,7.9,3.541666666666666,3.541666666666666,Bush second midterm; strong Democratic wave.
+2006,Medium,generic + 0.50*approval + 0.50*midterm,R,11.5,38.0,58.0,2.3333333333333335,1.0,13.166666666666666,7.9,5.266666666666666,5.266666666666666,Bush second midterm; strong Democratic wave.
+2006,Generic plus half approval,generic + 0.50*approval,R,11.5,38.0,58.0,2.3333333333333335,1.0,12.666666666666666,7.9,4.766666666666666,4.766666666666666,Bush second midterm; strong Democratic wave.
+2010,Full additive,generic + approval + midterm,D,-9.4,45.0,50.0,-0.0,-1.0,-10.4,-6.8,-3.6000000000000005,3.6000000000000005,Obama first midterm; Republican wave.
+2010,Reduced double-count,0.85*generic + 0.50*approval + 0.50*midterm,D,-9.4,45.0,50.0,-0.0,-1.0,-8.49,-6.8,-1.6900000000000004,1.6900000000000004,Obama first midterm; Republican wave.
+2010,Medium,generic + 0.50*approval + 0.50*midterm,D,-9.4,45.0,50.0,-0.0,-1.0,-9.9,-6.8,-3.1000000000000005,3.1000000000000005,Obama first midterm; Republican wave.
+2010,Generic plus half approval,generic + 0.50*approval,D,-9.4,45.0,50.0,-0.0,-1.0,-9.4,-6.8,-2.6000000000000005,2.6000000000000005,Obama first midterm; Republican wave.
+2014,Full additive,generic + approval + midterm,D,-2.4,42.0,53.0,-1.0,-1.0,-4.4,-5.7,1.2999999999999998,1.2999999999999998,Obama second midterm; GOP-favorable environment.
+2014,Reduced double-count,0.85*generic + 0.50*approval + 0.50*midterm,D,-2.4,42.0,53.0,-1.0,-1.0,-3.04,-5.7,2.66,2.66,Obama second midterm; GOP-favorable environment.
+2014,Medium,generic + 0.50*approval + 0.50*midterm,D,-2.4,42.0,53.0,-1.0,-1.0,-3.4,-5.7,2.3000000000000003,2.3000000000000003,Obama second midterm; GOP-favorable environment.
+2014,Generic plus half approval,generic + 0.50*approval,D,-2.4,42.0,53.0,-1.0,-1.0,-2.9,-5.7,2.8000000000000003,2.8000000000000003,Obama second midterm; GOP-favorable environment.
+2018,Full additive,generic + approval + midterm,R,7.3,42.0,53.0,1.0,1.0,9.3,8.6,0.7000000000000011,0.7000000000000011,Trump first midterm; Democratic wave.
+2018,Reduced double-count,0.85*generic + 0.50*approval + 0.50*midterm,R,7.3,42.0,53.0,1.0,1.0,7.205,8.6,-1.3949999999999996,1.3949999999999996,Trump first midterm; Democratic wave.
+2018,Medium,generic + 0.50*approval + 0.50*midterm,R,7.3,42.0,53.0,1.0,1.0,8.3,8.6,-0.29999999999999893,0.29999999999999893,Trump first midterm; Democratic wave.
+2018,Generic plus half approval,generic + 0.50*approval,R,7.3,42.0,53.0,1.0,1.0,7.8,8.6,-0.7999999999999998,0.7999999999999998,Trump first midterm; Democratic wave.
+2022,Full additive,generic + approval + midterm,D,-1.2,42.0,54.0,-1.0,-1.0,-3.2,-2.7,-0.5,0.5,Biden first midterm; modest GOP national House edge.
+2022,Reduced double-count,0.85*generic + 0.50*approval + 0.50*midterm,D,-1.2,42.0,54.0,-1.0,-1.0,-2.02,-2.7,0.6800000000000002,0.6800000000000002,Biden first midterm; modest GOP national House edge.
+2022,Medium,generic + 0.50*approval + 0.50*midterm,D,-1.2,42.0,54.0,-1.0,-1.0,-2.2,-2.7,0.5,0.5,Biden first midterm; modest GOP national House edge.
+2022,Generic plus half approval,generic + 0.50*approval,D,-1.2,42.0,54.0,-1.0,-1.0,-1.7,-2.7,1.0000000000000002,1.0000000000000002,Biden first midterm; modest GOP national House edge.
