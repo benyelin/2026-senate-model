@@ -150,11 +150,11 @@ with tab_scenarios:
         fig = px.line(
             scenarios,
             x="national_environment_margin_dem",
-            y="current_dem_control_probability",
+            y="dem_control_probability",
             markers=True,
             labels={
                 "national_environment_margin_dem": "National Swing Toward Democrats",
-                "current_dem_control_probability": "Democratic Control Probability",
+                "dem_control_probability": "Democratic Control Probability",
             },
         )
         fig.update_layout(yaxis_tickformat=".0%")
