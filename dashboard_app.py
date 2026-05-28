@@ -69,6 +69,172 @@ tab_overview, tab_races, tab_scenarios, tab_polls, tab_method = st.tabs(
 )
 
 with tab_overview:
+
+    # -----------------------------
+    # Compact Model Snapshot
+    # -----------------------------
+    st.markdown("### Model Snapshot")
+
+    def _fmt_margin(x):
+        try:
+            x = float(x)
+        except Exception:
+            return "—"
+        if x > 0:
+            return f"D+{x:.1f}"
+        if x < 0:
+            return f"R+{abs(x):.1f}"
+        return "Even"
+
+    def _fmt_pct(x):
+        try:
+            return f"{float(x):.1%}"
+        except Exception:
+            return "—"
+
+    def _fmt_num(x):
+        try:
+            return f"{float(x):.2f}"
+        except Exception:
+            return "—"
+
+    def _fmt_signed(x):
+        try:
+            return f"{float(x):+.1f}"
+        except Exception:
+            return "—"
+
+    snapshot_env = read_csv_safe(INPUTS / "national_environment.csv")
+    snapshot_races = read_csv_safe(INPUTS / "race_inputs.csv")
+    snapshot_stats = read_csv_safe(OUTPUTS / "race_stats.csv")
+    snapshot_scenarios = read_csv_safe(OUTPUTS / "scenario_summary.csv")
+
+    if not snapshot_env.empty:
+        env = snapshot_env.iloc[-1]
+
+        env_cols = st.columns(4)
+        env_cols[0].metric(
+            "Generic Ballot",
+            _fmt_margin(env.get("generic_ballot_margin_dem"))
+        )
+        env_cols[1].metric(
+            "GOP Pres. Net Approval",
+            _fmt_signed(env.get("presidential_net_approval"))
+        )
+        env_cols[2].metric(
+            "Approval Adj.",
+            _fmt_margin(env.get("approval_adjustment_dem"))
+        )
+        env_cols[3].metric(
+            "National Environment",
+            _fmt_margin(env.get("national_environment_margin_dem"))
+        )
+
+        with st.expander("National environment details", expanded=False):
+            show_cols = [
+                "as_of_date",
+                "generic_ballot_margin_dem",
+                "presidential_approval",
+                "presidential_disapproval",
+                "presidential_net_approval",
+                "approval_adjustment_dem",
+                "midterm_adjustment_dem",
+                "national_environment_margin_dem",
+                "source_notes",
+            ]
+            show_cols = [c for c in show_cols if c in snapshot_env.columns]
+            st.dataframe(snapshot_env[show_cols].tail(1), use_container_width=True, hide_index=True)
+
+    st.markdown("#### Key Race Snapshot")
+
+    if not snapshot_races.empty:
+        races_view = snapshot_races.copy()
+
+        if "state" in races_view.columns:
+            races_view["state"] = races_view["state"].astype(str).str.strip().str.upper()
+
+        if not snapshot_stats.empty and "state" in snapshot_stats.columns:
+            stats_view = snapshot_stats.copy()
+            stats_view["state"] = stats_view["state"].astype(str).str.strip().str.upper()
+
+            stats_cols = [
+                c for c in [
+                    "state",
+                    "model_margin_dem",
+                    "simulated_dem_win_prob",
+                    "avg_simulated_margin_dem",
+                ]
+                if c in stats_view.columns
+            ]
+
+            races_view = races_view.merge(
+                stats_view[stats_cols],
+                on="state",
+                how="left"
+            )
+
+        default_key_states = ["AK", "FL", "GA", "ME", "NC", "OH", "TX"]
+        key_states = [s for s in default_key_states if s in races_view["state"].values]
+
+        races_view = races_view[races_view["state"].isin(key_states)].copy()
+
+        compact_rows = []
+
+        for _, row in races_view.iterrows():
+            compact_rows.append(
+                {
+                    "State": row.get("state", ""),
+                    "Race": f"{row.get('dem_candidate', '')} vs. {row.get('gop_candidate', '')}",
+                    "Pres. baseline": _fmt_margin(row.get("state_partisan_baseline_dem")),
+                    "Nat'l env. effect": _fmt_margin(row.get("state_environment_adjustment_dem")),
+                    "Incumbency": _fmt_margin(row.get("incumbency_adjustment_dem")),
+                    "Cand. quality": _fmt_margin(row.get("candidate_quality_adjustment_dem")),
+                    "Fundamentals": _fmt_margin(row.get("fundamentals_margin_dem")),
+                    "Bayes margin": _fmt_margin(row.get("bayesian_model_margin_dem")),
+                    "Final margin": _fmt_margin(row.get("model_margin_dem")),
+                    "Dem win odds": _fmt_pct(row.get("simulated_dem_win_prob")),
+                    "Poll weight": _fmt_pct(row.get("bayesian_polling_weight")),
+                    "Uncertainty": _fmt_num(row.get("bayesian_posterior_sd")),
+                }
+            )
+
+        if compact_rows:
+            st.dataframe(
+                pd.DataFrame(compact_rows),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No key race snapshot available yet.")
+
+    st.markdown("#### Scenario Sensitivity")
+
+    if not snapshot_scenarios.empty:
+        scen = snapshot_scenarios.copy()
+
+        scenario_rows = []
+        for _, row in scen.iterrows():
+            scenario_rows.append(
+                {
+                    "Scenario": row.get("scenario", ""),
+                    "National env.": _fmt_margin(row.get("national_environment_margin_dem")),
+                    "Shift": _fmt_margin(row.get("environment_shift_from_base")),
+                    "Dem control odds": _fmt_pct(row.get("dem_control_probability")),
+                    "Expected Dem seats": _fmt_num(row.get("expected_dem_seats")),
+                    "Median Dem seats": _fmt_num(row.get("median_dem_seats")),
+                }
+            )
+
+        st.dataframe(
+            pd.DataFrame(scenario_rows),
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No scenario summary available. Run `python3 scenario_runner.py`.")
+
+    st.divider()
+
     left, right = st.columns([1.25, 1])
 
     with left:
