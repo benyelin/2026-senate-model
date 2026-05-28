@@ -6,30 +6,147 @@ INPUTS = Path("inputs")
 RACE_INPUTS_PATH = INPUTS / "race_inputs.csv"
 NATIONAL_ENV_PATH = INPUTS / "national_environment.csv"
 
-# Presidential baseline weights
 WEIGHT_2024 = 0.60
 WEIGHT_2020 = 0.25
 WEIGHT_2016 = 0.15
 
+# Fallback baselines for states where presidential margins are not yet populated.
+# Positive = Democratic lean; negative = Republican lean.
+# These are temporary legacy baselines so the dashboard audit is complete.
+LEGACY_BASELINE_FALLBACKS = {
+    "MI": 2.0,
+    "MN": 6.0,
+    "NH": 3.0,
+    "IA": -7.0,
+    "CO": 9.0,
+    "DE": 15.0,
+    "IL": 14.0,
+    "MA": 25.0,
+    "NJ": 11.0,
+    "NM": 9.0,
+    "OR": 14.0,
+    "RI": 22.0,
+    "VA": 7.0,
+    "AL": -25.0,
+    "AR": -28.0,
+    "ID": -30.0,
+    "KS": -16.0,
+    "KY": -20.0,
+    "LA": -18.0,
+    "MS": -17.0,
+    "MT": -15.0,
+    "NE": -18.0,
+    "OK": -30.0,
+    "SC": -12.0,
+    "SD": -25.0,
+    "TN": -22.0,
+    "WV": -30.0,
+    "WY": -35.0,
+}
+
+DEFAULT_INCUMBENCY_ADJUSTMENTS = {
+    "D": 2.0,
+    "D-APPOINTED": 1.0,
+    "R": -2.0,
+    "R-APPOINTED": -1.0,
+    "I": 0.0,
+    "OPEN": 0.0,
+    "VACANT": 0.0,
+    "UNKNOWN": 0.0,
+}
+
+# State-specific race adjustments.
+# Positive helps Democrats; negative helps Republicans.
+STATE_OVERRIDES = {
+    # Jon Ossoff is a Democratic incumbent.
+    "GA": {
+        "incumbency_adjustment_dem": 2.0,
+        "candidate_quality_adjustment_dem": 0.0,
+        "special_adjustment_dem": 0.0,
+        "note": "GA: Ossoff Democratic incumbent adjustment."
+    },
+
+    # Susan Collins is a Republican incumbent with historical crossover strength.
+    "ME": {
+        "incumbency_adjustment_dem": -2.5,
+        "candidate_quality_adjustment_dem": 0.0,
+        "special_adjustment_dem": 0.0,
+        "note": "ME: Collins Republican incumbent / overperformance adjustment."
+    },
+
+    # Ashley Moody is an appointed Republican incumbent.
+    "FL": {
+        "incumbency_adjustment_dem": -1.0,
+        "candidate_quality_adjustment_dem": 0.0,
+        "special_adjustment_dem": 0.0,
+        "note": "FL: appointed Republican incumbent adjustment."
+    },
+
+    # Dan Sullivan is a Republican incumbent; Peltola-style crossover strength partly offsets.
+    "AK": {
+        "incumbency_adjustment_dem": -1.5,
+        "candidate_quality_adjustment_dem": 1.0,
+        "special_adjustment_dem": 0.0,
+        "note": "AK: GOP incumbent adjustment partly offset by Democratic crossover/candidate-strength placeholder."
+    },
+
+    # Cooper is not an incumbent Senator, but has unusual statewide strength.
+    "NC": {
+        "incumbency_adjustment_dem": 0.0,
+        "candidate_quality_adjustment_dem": 2.0,
+        "special_adjustment_dem": 0.0,
+        "note": "NC: Cooper candidate-strength placeholder; no Senate incumbency adjustment."
+    },
+
+    # Ohio special/appointee dynamics plus Brown candidate strength.
+    "OH": {
+        "incumbency_adjustment_dem": -1.0,
+        "candidate_quality_adjustment_dem": 2.0,
+        "special_adjustment_dem": 0.0,
+        "note": "OH: appointed GOP incumbent placeholder plus Brown candidate-strength placeholder."
+    },
+
+    # Texas: GOP-held/open-ish nominee dynamics; Talarico candidate placeholder.
+    "TX": {
+        "incumbency_adjustment_dem": 0.0,
+        "candidate_quality_adjustment_dem": 1.0,
+        "special_adjustment_dem": 0.0,
+        "note": "TX: no direct Senate incumbency boost; modest Democratic candidate-quality placeholder."
+    },
+}
+
+
+def normalize_holder(x):
+    if pd.isna(x):
+        return "UNKNOWN"
+
+    x = str(x).strip().upper()
+
+    if "APPOINT" in x and ("R" in x or "REP" in x or "GOP" in x):
+        return "R-APPOINTED"
+
+    if "APPOINT" in x and ("D" in x or "DEM" in x):
+        return "D-APPOINTED"
+
+    if x in ["R", "REP", "REPUBLICAN", "GOP"]:
+        return "R"
+
+    if x in ["D", "DEM", "DEMOCRAT", "DEMOCRATIC"]:
+        return "D"
+
+    if "OPEN" in x:
+        return "OPEN"
+
+    if "VACANT" in x:
+        return "VACANT"
+
+    if x == "I":
+        return "I"
+
+    return "UNKNOWN"
+
 
 def read_national_environment():
-    """
-    Reads national_environment.csv if available.
-
-    Expected possible columns:
-      - national_environment_margin_dem
-      - generic_ballot_margin_dem
-      - presidential_approval
-      - presidential_approval_adjustment_dem
-      - midterm_adjustment_dem
-
-    If national_environment_margin_dem exists, use it directly.
-    Otherwise, build a simple estimate from available columns.
-
-    Positive = Democratic national environment.
-    Negative = Republican national environment.
-    """
-
     if not NATIONAL_ENV_PATH.exists():
         print("No national_environment.csv found. Using national environment = 0.0")
         return 0.0
@@ -43,10 +160,7 @@ def read_national_environment():
     row = env.iloc[-1]
 
     if "national_environment_margin_dem" in env.columns:
-        val = pd.to_numeric(
-            row["national_environment_margin_dem"],
-            errors="coerce"
-        )
+        val = pd.to_numeric(row["national_environment_margin_dem"], errors="coerce")
 
         if pd.notna(val):
             print(f"Using national_environment_margin_dem directly: {float(val):.2f}")
@@ -57,71 +171,46 @@ def read_national_environment():
     midterm_adjustment = 0.0
 
     if "generic_ballot_margin_dem" in env.columns:
-        val = pd.to_numeric(
-            row["generic_ballot_margin_dem"],
-            errors="coerce"
-        )
-
+        val = pd.to_numeric(row["generic_ballot_margin_dem"], errors="coerce")
         if pd.notna(val):
             generic_ballot = float(val)
 
-    if "presidential_approval_adjustment_dem" in env.columns:
-        val = pd.to_numeric(
-            row["presidential_approval_adjustment_dem"],
-            errors="coerce"
-        )
-
+    if "approval_adjustment_dem" in env.columns:
+        val = pd.to_numeric(row["approval_adjustment_dem"], errors="coerce")
         if pd.notna(val):
             approval_adjustment = float(val)
 
-    elif "presidential_approval" in env.columns:
-        approval = pd.to_numeric(
-            row["presidential_approval"],
-            errors="coerce"
-        )
-
-        # Very simple placeholder:
-        # approval below 45 hurts the president's party.
-        # This assumes the president is Republican, so low approval helps Democrats.
-        if pd.notna(approval):
-            approval_adjustment = max(-3.0, min(3.0, (45.0 - float(approval)) / 3.0))
-
     if "midterm_adjustment_dem" in env.columns:
-        val = pd.to_numeric(
-            row["midterm_adjustment_dem"],
-            errors="coerce"
-        )
-
+        val = pd.to_numeric(row["midterm_adjustment_dem"], errors="coerce")
         if pd.notna(val):
             midterm_adjustment = float(val)
 
-    national_environment = (
-        generic_ballot
-        + approval_adjustment
-        + midterm_adjustment
-    )
+    total = generic_ballot + approval_adjustment + midterm_adjustment
 
     print(
         "Built national environment from components: "
         f"generic_ballot={generic_ballot:.2f}, "
         f"approval_adjustment={approval_adjustment:.2f}, "
         f"midterm_adjustment={midterm_adjustment:.2f}, "
-        f"total={national_environment:.2f}"
+        f"total={total:.2f}"
     )
 
-    return float(national_environment)
+    return float(total)
 
 
-def coerce_numeric(df, columns, default=np.nan):
-    for col in columns:
-        if col not in df.columns:
-            df[col] = default
+def ensure_numeric(df, col, default=np.nan):
+    if col not in df.columns:
+        df[col] = default
 
-        df[col] = pd.to_numeric(
-            df[col],
-            errors="coerce"
-        )
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
 
+
+def ensure_text(df, col, default=""):
+    if col not in df.columns:
+        df[col] = default
+
+    df[col] = df[col].fillna(default).astype(str)
     return df
 
 
@@ -136,129 +225,7 @@ def main():
 
     races["state"] = races["state"].astype(str).str.strip().str.upper()
 
-    required_cols = [
-        "pres_2024_margin_dem",
-        "pres_2020_margin_dem",
-        "pres_2016_margin_dem",
-        "state_elasticity",
-        "incumbency_adjustment_dem",
-        "candidate_quality_adjustment_dem",
-        "special_adjustment_dem",
-    ]
-
-    races = coerce_numeric(races, required_cols, default=np.nan)
-
-    # Fall back to old elasticity column if state_elasticity is blank.
-    if "elasticity" in races.columns:
-        old_elasticity = pd.to_numeric(
-            races["elasticity"],
-            errors="coerce"
-        )
-
-        races["state_elasticity"] = races["state_elasticity"].fillna(
-            old_elasticity
-        )
-
-    races["state_elasticity"] = races["state_elasticity"].fillna(0.75)
-
-    for col in [
-        "incumbency_adjustment_dem",
-        "candidate_quality_adjustment_dem",
-        "special_adjustment_dem",
-    ]:
-        races[col] = races[col].fillna(0.0)
-
-    national_environment = read_national_environment()
-
-    races["national_environment_margin_dem"] = national_environment
-
-    # Calculate weighted state partisan baseline.
-    # Positive = Democratic lean, negative = Republican lean.
-    has_all_pres_margins = (
-        races["pres_2024_margin_dem"].notna()
-        & races["pres_2020_margin_dem"].notna()
-        & races["pres_2016_margin_dem"].notna()
-    )
-
-    calculated_baseline = (
-        WEIGHT_2024 * races["pres_2024_margin_dem"]
-        + WEIGHT_2020 * races["pres_2020_margin_dem"]
-        + WEIGHT_2016 * races["pres_2016_margin_dem"]
-    )
-
-    if "state_partisan_baseline_dem" not in races.columns:
-        races["state_partisan_baseline_dem"] = np.nan
-
-    races["state_partisan_baseline_dem"] = pd.to_numeric(
-        races["state_partisan_baseline_dem"],
-        errors="coerce"
-    )
-
-    # Only overwrite baseline where all presidential inputs exist.
-    races.loc[
-        has_all_pres_margins,
-        "state_partisan_baseline_dem"
-    ] = calculated_baseline.loc[has_all_pres_margins]
-
-    races["state_environment_adjustment_dem"] = (
-        races["national_environment_margin_dem"]
-        * races["state_elasticity"]
-    )
-
-    calculated_fundamentals = (
-        races["state_partisan_baseline_dem"]
-        + races["state_environment_adjustment_dem"]
-        + races["incumbency_adjustment_dem"]
-        + races["candidate_quality_adjustment_dem"]
-        + races["special_adjustment_dem"]
-    )
-
-    if "fundamentals_margin_dem" not in races.columns:
-        races["fundamentals_margin_dem"] = np.nan
-
-    races["fundamentals_margin_dem"] = pd.to_numeric(
-        races["fundamentals_margin_dem"],
-        errors="coerce"
-    )
-
-    # Only overwrite fundamentals when the state baseline exists.
-    can_calculate_fundamentals = races["state_partisan_baseline_dem"].notna()
-
-    races.loc[
-        can_calculate_fundamentals,
-        "fundamentals_margin_dem"
-    ] = calculated_fundamentals.loc[can_calculate_fundamentals]
-
-    # Audit notes
-    if "fundamentals_notes" not in races.columns:
-        races["fundamentals_notes"] = ""
-
-    races["fundamentals_notes"] = races["fundamentals_notes"].fillna("").astype(str)
-
-    races.loc[
-        has_all_pres_margins,
-        "fundamentals_notes"
-    ] = (
-        "Calculated from 2024/2020/2016 presidential margins "
-        f"({WEIGHT_2024:.0%}/{WEIGHT_2020:.0%}/{WEIGHT_2016:.0%}), "
-        "state elasticity, national environment, and race adjustments."
-    )
-
-    races.loc[
-        ~has_all_pres_margins,
-        "fundamentals_notes"
-    ] = races.loc[
-        ~has_all_pres_margins,
-        "fundamentals_notes"
-    ].replace("", "Presidential margins incomplete; retained existing fundamentals where needed.")
-
-    races.to_csv(RACE_INPUTS_PATH, index=False)
-
-    print(f"Updated fundamentals in {RACE_INPUTS_PATH}")
-    print(f"National environment used: {national_environment:.2f}")
-
-    show_cols = [
-        "state",
+    numeric_cols = [
         "pres_2024_margin_dem",
         "pres_2020_margin_dem",
         "pres_2016_margin_dem",
@@ -272,9 +239,165 @@ def main():
         "fundamentals_margin_dem",
     ]
 
+    for col in numeric_cols:
+        races = ensure_numeric(races, col)
+
+    races = ensure_text(races, "fundamentals_notes", "")
+    races = ensure_text(races, "current_holder", "")
+
+    # Elasticity fallback
+    if "elasticity" in races.columns:
+        old_elasticity = pd.to_numeric(races["elasticity"], errors="coerce")
+        races["state_elasticity"] = races["state_elasticity"].fillna(old_elasticity)
+
+    races["state_elasticity"] = races["state_elasticity"].fillna(0.75)
+
+    # 1. Presidential baseline where all three presidential margins exist.
+    has_all_pres_margins = (
+        races["pres_2024_margin_dem"].notna()
+        & races["pres_2020_margin_dem"].notna()
+        & races["pres_2016_margin_dem"].notna()
+    )
+
+    presidential_baseline = (
+        WEIGHT_2024 * races["pres_2024_margin_dem"]
+        + WEIGHT_2020 * races["pres_2020_margin_dem"]
+        + WEIGHT_2016 * races["pres_2016_margin_dem"]
+    )
+
+    races.loc[
+        has_all_pres_margins,
+        "state_partisan_baseline_dem"
+    ] = presidential_baseline.loc[has_all_pres_margins]
+
+    races["baseline_source"] = np.where(
+        has_all_pres_margins,
+        "presidential_weighted",
+        "legacy_fallback"
+    )
+
+    # 2. Legacy fallback for missing presidential-margin states.
+    for state, fallback in LEGACY_BASELINE_FALLBACKS.items():
+        mask = (races["state"] == state) & (~has_all_pres_margins)
+        races.loc[mask, "state_partisan_baseline_dem"] = fallback
+
+    # If still missing, use existing fundamentals as last-resort fallback.
+    still_missing = races["state_partisan_baseline_dem"].isna()
+    races.loc[
+        still_missing,
+        "state_partisan_baseline_dem"
+    ] = races.loc[
+        still_missing,
+        "fundamentals_margin_dem"
+    ]
+
+    # If still missing after that, use neutral baseline.
+    still_missing = races["state_partisan_baseline_dem"].isna()
+    races.loc[still_missing, "state_partisan_baseline_dem"] = 0.0
+    races.loc[still_missing, "baseline_source"] = "neutral_fallback"
+
+    # 3. Automatic incumbency from current_holder.
+    holder_norm = races["current_holder"].apply(normalize_holder)
+    races["holder_normalized"] = holder_norm
+
+    races["incumbency_adjustment_dem"] = holder_norm.map(
+        DEFAULT_INCUMBENCY_ADJUSTMENTS
+    ).fillna(0.0)
+
+    races["candidate_quality_adjustment_dem"] = races[
+        "candidate_quality_adjustment_dem"
+    ].fillna(0.0)
+
+    races["special_adjustment_dem"] = races["special_adjustment_dem"].fillna(0.0)
+
+    # 4. State-specific overrides for known candidate/incumbent dynamics.
+    for state, vals in STATE_OVERRIDES.items():
+        mask = races["state"] == state
+
+        if not mask.any():
+            continue
+
+        races.loc[mask, "incumbency_adjustment_dem"] = vals["incumbency_adjustment_dem"]
+        races.loc[mask, "candidate_quality_adjustment_dem"] = vals["candidate_quality_adjustment_dem"]
+        races.loc[mask, "special_adjustment_dem"] = vals["special_adjustment_dem"]
+
+        races.loc[mask, "fundamentals_notes"] = vals["note"]
+
+    national_environment = read_national_environment()
+
+    races["national_environment_margin_dem"] = national_environment
+
+    races["state_environment_adjustment_dem"] = (
+        races["national_environment_margin_dem"]
+        * races["state_elasticity"]
+    )
+
+    races["fundamentals_margin_dem"] = (
+        races["state_partisan_baseline_dem"]
+        + races["state_environment_adjustment_dem"]
+        + races["incumbency_adjustment_dem"]
+        + races["candidate_quality_adjustment_dem"]
+        + races["special_adjustment_dem"]
+    )
+
+    # Add notes for non-override states.
+    presidential_note = (
+        "Calculated from 2024/2020/2016 presidential margins "
+        f"({WEIGHT_2024:.0%}/{WEIGHT_2020:.0%}/{WEIGHT_2016:.0%}), "
+        "state elasticity, national environment, incumbency, candidate quality, "
+        "and special adjustments."
+    )
+
+    legacy_note = (
+        "Legacy partisan baseline fallback used pending presidential-margin entry; "
+        "then adjusted for national environment, elasticity, incumbency, candidate quality, "
+        "and special adjustments."
+    )
+
+    override_states = set(STATE_OVERRIDES.keys())
+
+    for idx, row in races.iterrows():
+        state = row["state"]
+
+        if state in override_states:
+            continue
+
+        if row["baseline_source"] == "presidential_weighted":
+            races.at[idx, "fundamentals_notes"] = presidential_note
+        elif row["baseline_source"] == "legacy_fallback":
+            races.at[idx, "fundamentals_notes"] = legacy_note
+        else:
+            races.at[idx, "fundamentals_notes"] = (
+                "Neutral fallback baseline used; presidential-margin entry needed."
+            )
+
+    races.to_csv(RACE_INPUTS_PATH, index=False)
+
+    print(f"Updated fundamentals in {RACE_INPUTS_PATH}")
+    print(f"National environment used: {national_environment:.2f}")
+
+    show_cols = [
+        "state",
+        "current_holder",
+        "holder_normalized",
+        "baseline_source",
+        "pres_2024_margin_dem",
+        "pres_2020_margin_dem",
+        "pres_2016_margin_dem",
+        "state_partisan_baseline_dem",
+        "state_elasticity",
+        "state_environment_adjustment_dem",
+        "incumbency_adjustment_dem",
+        "candidate_quality_adjustment_dem",
+        "special_adjustment_dem",
+        "fundamentals_margin_dem",
+        "fundamentals_notes",
+    ]
+
     show_cols = [c for c in show_cols if c in races.columns]
 
-    print("\nFundamentals preview:")
+    print()
+    print("Fundamentals preview:")
     print(races[show_cols].to_string(index=False))
 
 

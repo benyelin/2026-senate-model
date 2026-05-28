@@ -647,3 +647,250 @@ else:
         )
     else:
         st.caption("No manual polling detected in the audit table.") 
+
+# -----------------------------
+# Fundamentals Audit Panel
+# -----------------------------
+st.divider()
+st.subheader("Fundamentals Audit")
+
+st.caption(
+    "Breaks down how each race's fundamentals are built: presidential baseline, "
+    "national environment through elasticity, race-specific adjustments, polling, "
+    "Bayesian model margin, and simulated win probability."
+)
+
+fundamentals_race_path = INPUTS / "race_inputs.csv"
+fundamentals_polling_path = INPUTS / "polling_averages_generated.csv"
+fundamentals_stats_path = OUTPUTS / "race_stats.csv"
+fundamentals_env_path = INPUTS / "national_environment.csv"
+
+if fundamentals_race_path.exists():
+    fundamentals_df = pd.read_csv(fundamentals_race_path)
+else:
+    fundamentals_df = pd.DataFrame()
+
+if fundamentals_polling_path.exists():
+    fundamentals_polling = pd.read_csv(fundamentals_polling_path)
+else:
+    fundamentals_polling = pd.DataFrame()
+
+if fundamentals_stats_path.exists():
+    fundamentals_stats = pd.read_csv(fundamentals_stats_path)
+else:
+    fundamentals_stats = pd.DataFrame()
+
+if fundamentals_env_path.exists():
+    fundamentals_env = pd.read_csv(fundamentals_env_path)
+else:
+    fundamentals_env = pd.DataFrame()
+
+
+def normalize_state_code(x):
+    return str(x).strip().upper()
+
+
+if fundamentals_df.empty:
+    st.info("No race_inputs.csv file found for fundamentals audit.")
+else:
+    audit = fundamentals_df.copy()
+
+    if "state" in audit.columns:
+        audit["state"] = audit["state"].apply(normalize_state_code)
+
+    if not fundamentals_polling.empty and "state" in fundamentals_polling.columns:
+        fundamentals_polling["state"] = fundamentals_polling["state"].apply(normalize_state_code)
+
+        polling_cols = [
+            col for col in [
+                "state",
+                "polling_margin_dem",
+                "poll_count",
+                "latest_poll_end_date",
+                "avg_poll_age_days",
+                "total_poll_weight",
+            ]
+            if col in fundamentals_polling.columns
+        ]
+
+        polling_for_audit = fundamentals_polling[polling_cols].copy()
+
+        polling_for_audit = polling_for_audit.rename(
+            columns={
+                "polling_margin_dem": "manual_polling_margin_dem",
+                "poll_count": "manual_poll_count",
+                "latest_poll_end_date": "manual_latest_poll_end_date",
+                "avg_poll_age_days": "manual_avg_poll_age_days",
+                "total_poll_weight": "manual_total_poll_weight",
+            }
+        )
+
+        audit = audit.merge(
+            polling_for_audit,
+            on="state",
+            how="left"
+        )
+
+    if not fundamentals_stats.empty and "state" in fundamentals_stats.columns:
+        fundamentals_stats["state"] = fundamentals_stats["state"].apply(normalize_state_code)
+
+        stats_cols = [
+            col for col in [
+                "state",
+                "model_margin_dem",
+                "simulated_dem_win_prob",
+                "avg_simulated_margin_dem",
+                "pre_sim_dem_win_prob",
+            ]
+            if col in fundamentals_stats.columns
+        ]
+
+        stats_for_audit = fundamentals_stats[stats_cols].copy()
+
+        stats_for_audit = stats_for_audit.rename(
+            columns={
+                "model_margin_dem": "final_model_margin_dem",
+                "avg_simulated_margin_dem": "avg_simulated_margin_dem",
+                "simulated_dem_win_prob": "simulated_dem_win_prob",
+                "pre_sim_dem_win_prob": "pre_sim_dem_win_prob",
+            }
+        )
+
+        audit = audit.merge(
+            stats_for_audit,
+            on="state",
+            how="left"
+        )
+
+    # Numeric cleanup
+    numeric_cols = [
+        "pres_2024_margin_dem",
+        "pres_2020_margin_dem",
+        "pres_2016_margin_dem",
+        "state_partisan_baseline_dem",
+        "state_elasticity",
+        "national_environment_margin_dem",
+        "state_environment_adjustment_dem",
+        "incumbency_adjustment_dem",
+        "candidate_quality_adjustment_dem",
+        "special_adjustment_dem",
+        "fundamentals_margin_dem",
+        "manual_polling_margin_dem",
+        "manual_poll_count",
+        "bayesian_model_margin_dem",
+        "bayesian_polling_weight",
+        "bayesian_posterior_sd",
+        "final_model_margin_dem",
+        "avg_simulated_margin_dem",
+        "pre_sim_dem_win_prob",
+        "simulated_dem_win_prob",
+    ]
+
+    for col in numeric_cols:
+        if col in audit.columns:
+            audit[col] = pd.to_numeric(
+                audit[col],
+                errors="coerce"
+            )
+
+    # Derived explanatory columns
+    if (
+        "fundamentals_margin_dem" in audit.columns
+        and "state_partisan_baseline_dem" in audit.columns
+    ):
+        audit["fundamentals_vs_baseline_shift"] = (
+            audit["fundamentals_margin_dem"]
+            - audit["state_partisan_baseline_dem"]
+        )
+
+    if (
+        "bayesian_model_margin_dem" in audit.columns
+        and "fundamentals_margin_dem" in audit.columns
+    ):
+        audit["bayesian_shift_from_fundamentals"] = (
+            audit["bayesian_model_margin_dem"]
+            - audit["fundamentals_margin_dem"]
+        )
+
+    if (
+        "final_model_margin_dem" in audit.columns
+        and "fundamentals_margin_dem" in audit.columns
+    ):
+        audit["final_shift_from_fundamentals"] = (
+            audit["final_model_margin_dem"]
+            - audit["fundamentals_margin_dem"]
+        )
+
+    # National environment summary
+    if not fundamentals_env.empty:
+        env_latest = fundamentals_env.iloc[-1]
+
+        env_cols = [
+            "as_of_date",
+            "generic_ballot_margin_dem",
+            "presidential_approval",
+            "presidential_disapproval",
+            "presidential_net_approval",
+            "approval_adjustment_dem",
+            "midterm_adjustment_dem",
+            "national_environment_margin_dem",
+            "source_notes",
+        ]
+
+        env_display = {
+            col: env_latest[col]
+            for col in env_cols
+            if col in fundamentals_env.columns
+        }
+
+        with st.expander("National Environment Inputs", expanded=True):
+            st.dataframe(
+                pd.DataFrame([env_display]),
+                use_container_width=True
+            )
+
+    preferred_cols = [
+        "state",
+        "dem_candidate",
+        "gop_candidate",
+        "current_holder",
+        "race_tier",
+        "pres_2024_margin_dem",
+        "pres_2020_margin_dem",
+        "pres_2016_margin_dem",
+        "state_partisan_baseline_dem",
+        "national_environment_margin_dem",
+        "state_elasticity",
+        "state_environment_adjustment_dem",
+        "incumbency_adjustment_dem",
+        "candidate_quality_adjustment_dem",
+        "special_adjustment_dem",
+        "fundamentals_margin_dem",
+        "fundamentals_vs_baseline_shift",
+        "manual_polling_margin_dem",
+        "manual_poll_count",
+        "bayesian_model_margin_dem",
+        "bayesian_polling_weight",
+        "bayesian_posterior_sd",
+        "bayesian_shift_from_fundamentals",
+        "final_model_margin_dem",
+        "final_shift_from_fundamentals",
+        "simulated_dem_win_prob",
+        "fundamentals_notes",
+    ]
+
+    display_cols = [
+        col for col in preferred_cols
+        if col in audit.columns
+    ]
+
+    st.dataframe(
+        audit[display_cols],
+        use_container_width=True,
+        hide_index=True
+    )
+
+    st.caption(
+        "Positive margins favor Democrats; negative margins favor Republicans. "
+        "The national environment adjustment equals national environment margin × state elasticity."
+    )
