@@ -129,12 +129,13 @@ summary_row = summary.iloc[-1].to_dict()
 # -----------------------------
 # Tabs
 # -----------------------------
-tab_overview, tab_races, tab_drivers, tab_scenarios, tab_diagnostics = st.tabs(
+tab_overview, tab_races, tab_drivers, tab_scenarios, tab_manual_polls, tab_diagnostics = st.tabs(
     [
         "Overview",
         "Race Ratings",
         "Model Drivers",
         "Scenarios",
+        "Manual Poll Entry",
         "Diagnostics",
     ]
 )
@@ -575,3 +576,273 @@ with tab_diagnostics:
 
     with st.expander("bayesian_update_generated.csv"):
         st.dataframe(bayes, use_container_width=True, hide_index=True)
+
+
+# -----------------------------
+# Manual Poll Entry
+# -----------------------------
+with tab_manual_polls:
+    st.subheader("Manual Poll Entry")
+
+    st.caption(
+        "Add, edit, or delete manually entered Senate polls. Changes are saved to "
+        "inputs/manual_polls.csv. After editing polls, run the full pipeline to validate, "
+        "ingest, update Bayesian margins, rerun simulations, and refresh the dashboard."
+    )
+
+    manual_poll_path = INPUTS / "manual_polls.csv"
+
+    manual_poll_columns = [
+        "race",
+        "state",
+        "chamber",
+        "pollster",
+        "pollster_grade",
+        "house_effect_dem",
+        "start_date",
+        "end_date",
+        "sample_size",
+        "sample_type",
+        "dem_candidate",
+        "rep_candidate",
+        "ind_candidate",
+        "other_candidate",
+        "dem_pct",
+        "rep_pct",
+        "ind_pct",
+        "other_pct",
+        "undecided_pct",
+        "notes",
+    ]
+
+    numeric_poll_columns = [
+        "house_effect_dem",
+        "sample_size",
+        "dem_pct",
+        "rep_pct",
+        "ind_pct",
+        "other_pct",
+        "undecided_pct",
+    ]
+
+    existing_manual_polls = read_csv_safe(manual_poll_path)
+
+    if existing_manual_polls.empty:
+        existing_manual_polls = pd.DataFrame(columns=manual_poll_columns)
+
+    for col in manual_poll_columns:
+        if col not in existing_manual_polls.columns:
+            existing_manual_polls[col] = ""
+
+    existing_manual_polls = existing_manual_polls[manual_poll_columns].copy()
+
+    for col in numeric_poll_columns:
+        if col in existing_manual_polls.columns:
+            existing_manual_polls[col] = pd.to_numeric(
+                existing_manual_polls[col],
+                errors="coerce"
+            )
+
+    st.markdown("### Edit or Delete Existing Polls")
+
+    st.caption(
+        "Edit cells directly in the table. To delete a poll, check the Delete box. "
+        "Then click Save Edits / Delete Marked Polls."
+    )
+
+    editable = existing_manual_polls.copy()
+    editable.insert(0, "delete", False)
+    editable.insert(1, "row_id", range(1, len(editable) + 1))
+
+    edited = st.data_editor(
+        editable,
+        use_container_width=True,
+        hide_index=True,
+        num_rows="fixed",
+        key="manual_poll_editor_v2",
+        column_config={
+            "delete": st.column_config.CheckboxColumn(
+                "Delete",
+                help="Check this box and click Save Edits / Delete Marked Polls to delete the row.",
+                default=False,
+            ),
+            "row_id": st.column_config.NumberColumn(
+                "Row",
+                disabled=True,
+            ),
+            "pollster_grade": st.column_config.SelectboxColumn(
+                "Pollster grade",
+                options=["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D", "Unknown"],
+            ),
+            "sample_type": st.column_config.SelectboxColumn(
+                "Sample type",
+                options=["LV", "RV", "A", "Other"],
+            ),
+            "house_effect_dem": st.column_config.NumberColumn(
+                "House effect Dem",
+                step=0.5,
+                format="%.1f",
+            ),
+            "sample_size": st.column_config.NumberColumn(
+                "Sample size",
+                step=1,
+                min_value=1,
+            ),
+            "dem_pct": st.column_config.NumberColumn("Dem %", step=0.1, format="%.1f"),
+            "rep_pct": st.column_config.NumberColumn("GOP %", step=0.1, format="%.1f"),
+            "ind_pct": st.column_config.NumberColumn("Independent %", step=0.1, format="%.1f"),
+            "other_pct": st.column_config.NumberColumn("Other %", step=0.1, format="%.1f"),
+            "undecided_pct": st.column_config.NumberColumn("Undecided %", step=0.1, format="%.1f"),
+        },
+    )
+
+    c_save, c_reset = st.columns([1, 3])
+
+    with c_save:
+        save_edits = st.button(
+            "Save Edits / Delete Marked Polls",
+            type="primary",
+            key="save_manual_poll_edits_v2",
+        )
+
+    with c_reset:
+        st.caption("Tip: use your browser refresh if you want to discard unsaved table edits.")
+
+    if save_edits:
+        updated = edited.copy()
+
+        if "delete" in updated.columns:
+            updated = updated[updated["delete"] != True]
+
+        for col in ["delete", "row_id"]:
+            if col in updated.columns:
+                updated = updated.drop(columns=[col])
+
+        for col in manual_poll_columns:
+            if col not in updated.columns:
+                updated[col] = ""
+
+        updated = updated[manual_poll_columns].copy()
+
+        updated["state"] = updated["state"].fillna("").astype(str).str.strip().str.upper()
+
+        for col in numeric_poll_columns:
+            updated[col] = pd.to_numeric(
+                updated[col],
+                errors="coerce"
+            ).fillna(0.0)
+
+        # Remove fully blank rows if any somehow appear.
+        nonblank_mask = updated[["race", "state", "pollster", "dem_candidate", "rep_candidate"]].fillna("").astype(str).agg(
+            lambda row: any(x.strip() for x in row),
+            axis=1,
+        )
+        updated = updated[nonblank_mask].copy()
+
+        manual_poll_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if manual_poll_path.exists():
+            backup_path = manual_poll_path.with_suffix(".csv.bak")
+            existing_manual_polls.to_csv(backup_path, index=False)
+
+        updated.to_csv(manual_poll_path, index=False)
+
+        st.success(
+            f"Saved {len(updated)} manual polls to {manual_poll_path}. "
+            "Run the full pipeline to ingest the changes."
+        )
+
+        st.dataframe(updated, use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    st.markdown("### Add New Poll")
+
+    with st.form("manual_poll_entry_form_v2"):
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            race = st.text_input("Race", value="TX Senate")
+            state = st.text_input("State abbreviation", value="TX")
+            chamber = st.text_input("Chamber", value="Senate")
+            pollster = st.text_input("Pollster", value="")
+            pollster_grade = st.selectbox(
+                "Pollster grade",
+                ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D", "Unknown"],
+                index=4,
+            )
+            house_effect_dem = st.number_input(
+                "House effect Dem",
+                value=0.0,
+                step=0.5,
+                help="Positive means pollster is Dem-leaning; this amount is subtracted from the poll margin.",
+            )
+
+        with c2:
+            start_date = st.date_input("Start date", key="add_poll_start_date_v2")
+            end_date = st.date_input("End date", key="add_poll_end_date_v2")
+            sample_size = st.number_input("Sample size", min_value=1, value=800, step=1)
+            sample_type = st.selectbox("Sample type", ["LV", "RV", "A", "Other"], index=0)
+            dem_candidate = st.text_input("Dem candidate", value="")
+            rep_candidate = st.text_input("GOP candidate", value="")
+
+        with c3:
+            ind_candidate = st.text_input("Independent candidate", value="")
+            other_candidate = st.text_input("Other candidate", value="")
+            dem_pct = st.number_input("Dem %", value=0.0, step=0.1)
+            rep_pct = st.number_input("GOP %", value=0.0, step=0.1)
+            ind_pct = st.number_input("Independent %", value=0.0, step=0.1)
+            other_pct = st.number_input("Other %", value=0.0, step=0.1)
+            undecided_pct = st.number_input("Undecided %", value=0.0, step=0.1)
+
+        notes = st.text_area("Notes", value="")
+
+        submitted = st.form_submit_button("Save New Poll")
+
+        if submitted:
+            new_row = {
+                "race": race,
+                "state": state.strip().upper(),
+                "chamber": chamber,
+                "pollster": pollster,
+                "pollster_grade": pollster_grade,
+                "house_effect_dem": house_effect_dem,
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "sample_size": sample_size,
+                "sample_type": sample_type,
+                "dem_candidate": dem_candidate,
+                "rep_candidate": rep_candidate,
+                "ind_candidate": ind_candidate,
+                "other_candidate": other_candidate,
+                "dem_pct": dem_pct,
+                "rep_pct": rep_pct,
+                "ind_pct": ind_pct,
+                "other_pct": other_pct,
+                "undecided_pct": undecided_pct,
+                "notes": notes,
+            }
+
+            updated = pd.concat(
+                [
+                    existing_manual_polls,
+                    pd.DataFrame([new_row])
+                ],
+                ignore_index=True
+            )
+
+            manual_poll_path.parent.mkdir(parents=True, exist_ok=True)
+            updated.to_csv(manual_poll_path, index=False)
+
+            st.success(f"Saved new poll to {manual_poll_path}. Run the full pipeline to ingest it.")
+            st.dataframe(updated.tail(10), use_container_width=True, hide_index=True)
+
+    st.divider()
+
+    st.markdown("### Recommended next command")
+
+    st.code("python3 run_full_pipeline.py", language="bash")
+
+    st.caption(
+        "Or use VS Code: Terminal → Run Task → Run Full Pipeline."
+    )
