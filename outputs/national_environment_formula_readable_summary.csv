@@ -1,5 +1,5 @@
 Formula,National env.,Dem control,Expected Dem seats,Median Dem seats,FL odds,FL margin,AK odds,AK margin,TX odds,TX margin,GA odds,GA margin,NC odds,NC margin,OH odds,OH margin,ME odds,ME margin
-Generic ballot only,D+7.1,32.7%,49.36,49.00,30.5%,R+4.8,19.7%,R+8.5,32.4%,R+4.2,73.9%,D+5.8,73.1%,D+5.7,33.7%,R+3.6,82.9%,D+9.6
-Reduced double-count formula,D+7.6,35.2%,49.54,50.00,31.7%,R+4.5,20.7%,R+8.2,33.7%,R+3.9,75.6%,D+6.2,74.5%,D+6.1,35.0%,R+3.3,83.8%,D+9.9
-Medium formula,D+8.7,40.6%,49.91,50.00,34.6%,R+3.8,22.6%,R+7.5,36.7%,R+3.1,78.3%,D+7.1,77.2%,D+6.9,38.2%,R+2.5,85.6%,D+10.7
-Current formula,D+10.2,48.5%,50.44,50.00,38.8%,R+2.7,25.7%,R+6.4,41.1%,R+2.0,82.1%,D+8.4,81.4%,D+8.2,42.8%,R+1.4,87.8%,D+11.8
+Generic ballot only,D+7.1,32.6%,49.35,49.00,30.5%,R+4.8,19.7%,R+8.5,32.4%,R+4.2,73.9%,D+5.8,73.1%,D+5.7,33.7%,R+3.6,82.9%,D+9.6
+Active formula: reduced double-count,D+7.6,35.2%,49.53,50.00,31.7%,R+4.5,20.7%,R+8.1,33.7%,R+3.8,75.6%,D+6.2,74.5%,D+6.1,35.1%,R+3.3,83.9%,D+10.0
+Reduced double-count formula,D+7.6,35.2%,49.53,50.00,31.7%,R+4.5,20.7%,R+8.1,33.7%,R+3.8,75.6%,D+6.2,74.5%,D+6.1,35.1%,R+3.3,83.9%,D+10.0
+Medium formula,D+8.7,40.5%,49.90,50.00,34.6%,R+3.8,22.6%,R+7.5,36.8%,R+3.1,78.4%,D+7.1,77.3%,D+7.0,38.2%,R+2.5,85.6%,D+10.7
