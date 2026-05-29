@@ -121,6 +121,28 @@
         "panel": "dedicated",
         "clear": true
       }
+    },
+    {
+      "label": "Add Candidate Quality Columns",
+      "type": "shell",
+      "command": "python3 add_candidate_quality_columns.py",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Update Candidate Quality",
+      "type": "shell",
+      "command": "python3 update_candidate_quality.py",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
     }
   ],
   "inputs": [
