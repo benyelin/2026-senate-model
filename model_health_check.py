@@ -75,6 +75,278 @@ def print_messages(title, rows):
         print(f"- {msg}")
 
 
+
+def check_pipeline_sync_integrity(errors, warnings, info):
+    """
+    Catch silent pipeline overwrites:
+    - generated polling counts not flowing into race_inputs
+    - calculated candidate quality not flowing into fundamentals
+    - fundamentals not matching component fields
+    - race_stats not using race-specific Bayesian margin
+    """
+    import pandas as pd
+    import numpy as np
+    from pathlib import Path
+
+    race_path = Path("inputs/race_inputs.csv")
+    polling_path = Path("inputs/polling_averages_generated.csv")
+    bayes_path = Path("inputs/bayesian_update_generated.csv")
+    stats_path = Path("outputs/race_stats.csv")
+
+    if not race_path.exists():
+        errors.append("Missing inputs/race_inputs.csv for pipeline sync check.")
+        return
+
+    races = pd.read_csv(race_path)
+    races["state"] = races["state"].astype(str).str.strip().str.upper()
+
+    # ------------------------------------------------------------
+    # 1. Candidate quality final field should equal:
+    #    (objective + manual) * gate
+    # ------------------------------------------------------------
+    cq_cols = [
+        "objective_candidate_quality_adjustment_dem",
+        "manual_candidate_quality_adjustment_dem",
+        "candidate_quality_gate",
+        "candidate_quality_adjustment_dem",
+    ]
+
+    if all(c in races.columns for c in cq_cols):
+        objective = pd.to_numeric(
+            races["objective_candidate_quality_adjustment_dem"],
+            errors="coerce",
+        ).fillna(0.0)
+
+        manual = pd.to_numeric(
+            races["manual_candidate_quality_adjustment_dem"],
+            errors="coerce",
+        ).fillna(0.0)
+
+        gate = pd.to_numeric(
+            races["candidate_quality_gate"],
+            errors="coerce",
+        ).fillna(1.0).clip(lower=0.0, upper=1.0)
+
+        expected_cq = (objective + manual) * gate
+
+        actual_cq = pd.to_numeric(
+            races["candidate_quality_adjustment_dem"],
+            errors="coerce",
+        ).fillna(0.0)
+
+        mismatch = races[(actual_cq - expected_cq).abs() > 0.001]
+
+        if not mismatch.empty:
+            examples = ", ".join(
+                f"{row.state}: actual {float(actual_cq.loc[idx]):+.2f}, expected {float(expected_cq.loc[idx]):+.2f}"
+                for idx, row in mismatch.head(10).iterrows()
+            )
+            errors.append(
+                f"Candidate-quality final adjustment mismatch in {len(mismatch)} race(s): {examples}"
+            )
+        else:
+            info.append("Candidate-quality final adjustments match objective/manual/gate fields.")
+    else:
+        missing = [c for c in cq_cols if c not in races.columns]
+        warnings.append(f"Cannot fully check candidate-quality sync; missing columns: {missing}")
+
+    # ------------------------------------------------------------
+    # 2. Fundamentals should equal component sum.
+    # ------------------------------------------------------------
+    fund_cols = [
+        "state_partisan_baseline_dem",
+        "state_environment_adjustment_dem",
+        "incumbency_adjustment_dem",
+        "candidate_quality_adjustment_dem",
+        "special_adjustment_dem",
+        "fundamentals_margin_dem",
+    ]
+
+    if all(c in races.columns for c in fund_cols):
+        expected_fund = (
+            pd.to_numeric(races["state_partisan_baseline_dem"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(races["state_environment_adjustment_dem"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(races["incumbency_adjustment_dem"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(races["candidate_quality_adjustment_dem"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(races["special_adjustment_dem"], errors="coerce").fillna(0.0)
+        )
+
+        actual_fund = pd.to_numeric(
+            races["fundamentals_margin_dem"],
+            errors="coerce",
+        ).fillna(0.0)
+
+        mismatch = races[(actual_fund - expected_fund).abs() > 0.01]
+
+        if not mismatch.empty:
+            examples = ", ".join(
+                f"{row.state}: actual {float(actual_fund.loc[idx]):+.2f}, expected {float(expected_fund.loc[idx]):+.2f}"
+                for idx, row in mismatch.head(10).iterrows()
+            )
+            errors.append(
+                f"Fundamentals margin does not match component sum in {len(mismatch)} race(s): {examples}"
+            )
+        else:
+            info.append("Fundamentals margins match component sums.")
+    else:
+        missing = [c for c in fund_cols if c not in races.columns]
+        warnings.append(f"Cannot fully check fundamentals component sum; missing columns: {missing}")
+
+    # ------------------------------------------------------------
+    # 3. Generated polling counts should flow into race_inputs.
+    # ------------------------------------------------------------
+    if polling_path.exists():
+        polling = pd.read_csv(polling_path)
+
+        if not polling.empty and "state" in polling.columns and "poll_count" in polling.columns:
+            polling["state"] = polling["state"].astype(str).str.strip().str.upper()
+
+            compare = races[["state", "poll_count"]].merge(
+                polling[["state", "poll_count"]],
+                on="state",
+                how="inner",
+                suffixes=("_race_inputs", "_generated"),
+            )
+
+            if not compare.empty:
+                compare["poll_count_race_inputs"] = pd.to_numeric(
+                    compare["poll_count_race_inputs"],
+                    errors="coerce",
+                ).fillna(0)
+
+                compare["poll_count_generated"] = pd.to_numeric(
+                    compare["poll_count_generated"],
+                    errors="coerce",
+                ).fillna(0)
+
+                mismatch = compare[
+                    compare["poll_count_race_inputs"] != compare["poll_count_generated"]
+                ]
+
+                if not mismatch.empty:
+                    examples = ", ".join(
+                        f"{row.state}: race_inputs {row.poll_count_race_inputs}, generated {row.poll_count_generated}"
+                        for _, row in mismatch.head(10).iterrows()
+                    )
+                    errors.append(
+                        f"Poll count mismatch between generated averages and race_inputs in {len(mismatch)} race(s): {examples}"
+                    )
+                else:
+                    info.append("Generated poll counts match race_inputs poll counts.")
+        else:
+            info.append("Generated polling averages file is empty or lacks poll_count; no poll-count sync check needed.")
+    else:
+        info.append("No generated polling averages file found; skipping poll-count sync check.")
+
+    # ------------------------------------------------------------
+    # 4. Bayesian generated capped fields should match race_inputs.
+    # ------------------------------------------------------------
+    if bayes_path.exists():
+        bayes = pd.read_csv(bayes_path)
+
+        if not bayes.empty and "state" in bayes.columns:
+            bayes["state"] = bayes["state"].astype(str).str.strip().str.upper()
+
+            if "bayesian_model_margin_dem_capped" in bayes.columns and "bayesian_model_margin_dem" in races.columns:
+                compare = races[["state", "bayesian_model_margin_dem"]].merge(
+                    bayes[["state", "bayesian_model_margin_dem_capped"]],
+                    on="state",
+                    how="inner",
+                )
+
+                compare["race_inputs_margin"] = pd.to_numeric(
+                    compare["bayesian_model_margin_dem"],
+                    errors="coerce",
+                )
+
+                compare["generated_margin"] = pd.to_numeric(
+                    compare["bayesian_model_margin_dem_capped"],
+                    errors="coerce",
+                )
+
+                mismatch = compare[
+                    (compare["race_inputs_margin"] - compare["generated_margin"]).abs() > 0.01
+                ]
+
+                if not mismatch.empty:
+                    examples = ", ".join(
+                        f"{row.state}: race_inputs {row.race_inputs_margin:+.2f}, generated {row.generated_margin:+.2f}"
+                        for _, row in mismatch.head(10).iterrows()
+                    )
+                    errors.append(
+                        f"Bayesian model margin mismatch between generated file and race_inputs in {len(mismatch)} race(s): {examples}"
+                    )
+                else:
+                    info.append("Capped Bayesian model margins match race_inputs.")
+    else:
+        warnings.append("Missing inputs/bayesian_update_generated.csv; cannot check Bayesian sync.")
+
+    # ------------------------------------------------------------
+    # 5. Race stats should use race-specific Bayesian margin when available.
+    # ------------------------------------------------------------
+    if stats_path.exists():
+        stats = pd.read_csv(stats_path)
+        stats["state"] = stats["state"].astype(str).str.strip().str.upper()
+
+        if "model_margin_dem" in stats.columns and "bayesian_model_margin_dem" in races.columns:
+            compare = stats[["state", "model_margin_dem"]].merge(
+                races[["state", "bayesian_model_margin_dem"]],
+                on="state",
+                how="inner",
+            )
+
+            compare["model_margin_dem"] = pd.to_numeric(
+                compare["model_margin_dem"],
+                errors="coerce",
+            )
+
+            compare["bayesian_model_margin_dem"] = pd.to_numeric(
+                compare["bayesian_model_margin_dem"],
+                errors="coerce",
+            )
+
+            compare = compare[compare["bayesian_model_margin_dem"].notna()]
+
+            mismatch = compare[
+                (compare["model_margin_dem"] - compare["bayesian_model_margin_dem"]).abs() > 0.01
+            ]
+
+            if not mismatch.empty:
+                examples = ", ".join(
+                    f"{row.state}: race_stats {row.model_margin_dem:+.2f}, race_inputs bayes {row.bayesian_model_margin_dem:+.2f}"
+                    for _, row in mismatch.head(10).iterrows()
+                )
+                errors.append(
+                    f"Race stats model margins do not match race-specific Bayesian margins in {len(mismatch)} race(s): {examples}"
+                )
+            else:
+                info.append("Race stats model margins match race-specific Bayesian margins.")
+    else:
+        warnings.append("Missing outputs/race_stats.csv; cannot check model-margin sync.")
+
+    # ------------------------------------------------------------
+    # 6. Maine trace sanity, because Maine caught the bug.
+    # ------------------------------------------------------------
+    me = races[races["state"] == "ME"]
+
+    if not me.empty:
+        row = me.iloc[0]
+
+        me_summary = []
+
+        for col in [
+            "fundamentals_margin_dem",
+            "polling_margin_dem",
+            "poll_count",
+            "bayesian_polling_weight",
+            "bayesian_model_margin_dem",
+            "candidate_quality_adjustment_dem",
+        ]:
+            if col in races.columns:
+                me_summary.append(f"{col}={row.get(col)}")
+
+        info.append("ME pipeline trace: " + "; ".join(me_summary))
+
 def main():
     errors = []
     warnings = []
@@ -326,6 +598,8 @@ def main():
     print_messages("Info", info)
 
     print()
+
+    check_pipeline_sync_integrity(errors, warnings, info)
 
     if errors:
         print("Health check result: FAIL")

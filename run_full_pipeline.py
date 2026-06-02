@@ -39,7 +39,6 @@ def main():
             cmd.extend(["--presidential-approval", str(args.presidential_approval)])
         run(cmd)
     run([py, "update_candidate_quality.py"])
-    run([py, "update_candidate_quality.py"])
     run([py, "sync_candidate_quality_fields.py"])
     run([py, "recalculate_fundamentals.py"])
     run([py, "validate_manual_polls.py"])
