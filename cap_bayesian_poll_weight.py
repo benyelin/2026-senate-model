@@ -40,6 +40,60 @@ def poll_count_multiplier(poll_count):
     return 1.0
 
 
+def refresh_polling_metadata_from_generated(df):
+    """
+    Use inputs/polling_averages_generated.csv as the source of truth for poll_count,
+    total_poll_weight, and avg_poll_age_days.
+
+    This prevents stale values in race_inputs.csv from reducing polling weight after
+    the poll ingestion step has correctly counted multiple manual polls.
+    """
+    from pathlib import Path
+    import pandas as pd
+
+    polling_path = Path("inputs/polling_averages_generated.csv")
+
+    if not polling_path.exists():
+        print("WARNING: inputs/polling_averages_generated.csv not found; using existing poll metadata.")
+        return df
+
+    polling = pd.read_csv(polling_path)
+
+    if polling.empty:
+        print("No generated polling averages found; using existing poll metadata.")
+        return df
+
+    required = ["state", "poll_count", "total_poll_weight", "avg_poll_age_days"]
+
+    missing = [c for c in required if c not in polling.columns]
+
+    if missing:
+        print(f"WARNING: polling_averages_generated.csv missing columns: {missing}; using existing poll metadata.")
+        return df
+
+    polling = polling[required].copy()
+    polling["state"] = polling["state"].astype(str).str.strip().str.upper()
+
+    df = df.copy()
+    df["state"] = df["state"].astype(str).str.strip().str.upper()
+
+    df = df.merge(
+        polling,
+        on="state",
+        how="left",
+        suffixes=("", "_from_generated"),
+    )
+
+    for col in ["poll_count", "total_poll_weight", "avg_poll_age_days"]:
+        generated_col = f"{col}_from_generated"
+
+        if generated_col in df.columns:
+            df[col] = df[generated_col].combine_first(df[col])
+            df = df.drop(columns=[generated_col])
+
+    return df
+
+
 def minimum_uncertainty_for_days_out(days_out):
     if days_out > 180:
         return 7.5

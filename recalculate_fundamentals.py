@@ -116,6 +116,45 @@ STATE_OVERRIDES = {
 }
 
 
+
+def sync_candidate_quality_adjustment(df):
+    """
+    Rebuild candidate_quality_adjustment_dem from objective/manual/gate fields
+    before calculating fundamentals.
+
+    This prevents stale candidate_quality_adjustment_dem values from muting
+    candidate-quality updates.
+    """
+    import pandas as pd
+
+    for col, default in [
+        ("objective_candidate_quality_adjustment_dem", 0.0),
+        ("manual_candidate_quality_adjustment_dem", 0.0),
+        ("candidate_quality_gate", 1.0),
+    ]:
+        if col not in df.columns:
+            df[col] = default
+
+    objective = pd.to_numeric(
+        df["objective_candidate_quality_adjustment_dem"],
+        errors="coerce",
+    ).fillna(0.0)
+
+    manual = pd.to_numeric(
+        df["manual_candidate_quality_adjustment_dem"],
+        errors="coerce",
+    ).fillna(0.0)
+
+    gate = pd.to_numeric(
+        df["candidate_quality_gate"],
+        errors="coerce",
+    ).fillna(1.0).clip(lower=0.0, upper=1.0)
+
+    df["candidate_quality_adjustment_dem"] = (objective + manual) * gate
+
+    return df
+
+
 def normalize_holder(x):
     if pd.isna(x):
         return "UNKNOWN"
@@ -318,7 +357,18 @@ def main():
             continue
 
         races.loc[mask, "incumbency_adjustment_dem"] = vals["incumbency_adjustment_dem"]
-        races.loc[mask, "candidate_quality_adjustment_dem"] = vals["candidate_quality_adjustment_dem"]
+
+        # Do NOT overwrite candidate_quality_adjustment_dem here.
+        # Candidate quality is calculated by update_candidate_quality.py from
+        # objective/manual/gate fields. Hard-coded defaults may set incumbency
+        # and special adjustments, but they should not erase calculated CQ.
+        if "fundamentals_default_candidate_quality_adjustment_dem" not in races.columns:
+            races["fundamentals_default_candidate_quality_adjustment_dem"] = 0.0
+
+        races.loc[mask, "fundamentals_default_candidate_quality_adjustment_dem"] = vals[
+            "candidate_quality_adjustment_dem"
+        ]
+
         races.loc[mask, "special_adjustment_dem"] = vals["special_adjustment_dem"]
 
         races.loc[mask, "fundamentals_notes"] = vals["note"]
@@ -331,6 +381,10 @@ def main():
         races["national_environment_margin_dem"]
         * races["state_elasticity"]
     )
+
+    # Rebuild candidate quality after applying hard-coded incumbency/special defaults.
+    # This ensures calculated candidate quality survives the fundamentals step.
+    races = sync_candidate_quality_adjustment(races)
 
     races["fundamentals_margin_dem"] = (
         races["state_partisan_baseline_dem"]

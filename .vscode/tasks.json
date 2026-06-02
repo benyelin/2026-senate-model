@@ -143,6 +143,28 @@
         "panel": "shared",
         "clear": true
       }
+    },
+    {
+      "label": "Manual Update Candidate Liability",
+      "type": "shell",
+      "command": "python3 manual_update_candidate_liability.py",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
+    },
+    {
+      "label": "Manual Update Race Fundamentals",
+      "type": "shell",
+      "command": "python3 manual_update_race_fundamentals.py",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      }
     }
   ],
   "inputs": [

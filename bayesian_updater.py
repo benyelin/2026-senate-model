@@ -28,6 +28,57 @@ def _interp(calibration: pd.DataFrame, days_out: float, column: str, default: fl
     return float(np.interp(float(days_out), curve["days_out"], curve[column]))
 
 
+
+def _refresh_poll_metadata_from_generated(merged):
+    """
+    After merging races and polling averages, force poll_count / weight / age
+    to come from inputs/polling_averages_generated.csv when available.
+
+    This avoids stale race_inputs.csv poll_count values suppressing polling weight.
+    """
+    from pathlib import Path
+    import pandas as pd
+
+    polling_path = Path("inputs/polling_averages_generated.csv")
+
+    if not polling_path.exists():
+        return merged
+
+    polling = pd.read_csv(polling_path)
+
+    if polling.empty or "state" not in polling.columns:
+        return merged
+
+    polling["state"] = polling["state"].astype(str).str.strip().str.upper()
+    merged = merged.copy()
+    merged["state"] = merged["state"].astype(str).str.strip().str.upper()
+
+    refresh_cols = [
+        "poll_count",
+        "total_poll_weight",
+        "avg_poll_age_days",
+        "polling_margin_dem",
+    ]
+
+    keep = ["state"] + [c for c in refresh_cols if c in polling.columns]
+    polling = polling[keep].copy()
+
+    merged = merged.merge(
+        polling,
+        on="state",
+        how="left",
+        suffixes=("", "_generated_truth"),
+    )
+
+    for col in refresh_cols:
+        truth_col = f"{col}_generated_truth"
+        if truth_col in merged.columns:
+            merged[col] = merged[truth_col].combine_first(merged.get(col))
+            merged = merged.drop(columns=[truth_col])
+
+    return merged
+
+
 def run_bayesian_update(
     input_dir: str | Path = "inputs",
     as_of_days_out: int | None = None,
@@ -68,6 +119,8 @@ def run_bayesian_update(
     merged["polling_margin_used"] = merged["polling_margin_dem_poll_generated"].fillna(
         merged["polling_margin_dem"]
     )
+    merged = _refresh_poll_metadata_from_generated(merged)
+
     merged["poll_count"] = merged["poll_count"].fillna(0)
     merged["total_poll_weight"] = merged["total_poll_weight"].fillna(0)
     merged["avg_poll_age_days"] = merged["avg_poll_age_days"].fillna(999)

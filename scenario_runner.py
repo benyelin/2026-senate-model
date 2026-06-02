@@ -109,6 +109,7 @@ def run_model_chain(days_out, sims):
 
     run([py, "recalculate_fundamentals.py"])
     run([py, "bayesian_update.py", "--days-out", str(days_out)])
+    run([py, "sync_bayesian_poll_metadata.py"])
     run([py, "cap_bayesian_poll_weight.py"])
     run([py, "run_model.py", "--sims", str(sims)])
 
