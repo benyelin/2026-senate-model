@@ -6,12 +6,58 @@ import plotly.express as px
 import streamlit as st
 import subprocess
 
+DEM_COLOR = "#1f77b4"
+GOP_COLOR = "#d62728"
+SENATE_CONTROL_THRESHOLD = 51
+
+
 ROOT = Path(__file__).resolve().parent
 OUTPUTS = ROOT / "outputs"
 INPUTS = ROOT / "inputs"
 
 st.set_page_config(page_title="2026 Senate Forecast", page_icon="🗳️", layout="wide")
 
+
+STATE_CODES = {
+    "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+    "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+    "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+    "VA","WA","WV","WI","WY"
+}
+
+STATE_NAMES_TO_CODES = {
+    "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR",
+    "CALIFORNIA": "CA", "COLORADO": "CO", "CONNECTICUT": "CT", "DELAWARE": "DE",
+    "FLORIDA": "FL", "GEORGIA": "GA", "HAWAII": "HI", "IDAHO": "ID",
+    "ILLINOIS": "IL", "INDIANA": "IN", "IOWA": "IA", "KANSAS": "KS",
+    "KENTUCKY": "KY", "LOUISIANA": "LA", "MAINE": "ME", "MARYLAND": "MD",
+    "MASSACHUSETTS": "MA", "MICHIGAN": "MI", "MINNESOTA": "MN", "MISSISSIPPI": "MS",
+    "MISSOURI": "MO", "MONTANA": "MT", "NEBRASKA": "NE", "NEVADA": "NV",
+    "NEW HAMPSHIRE": "NH", "NEW JERSEY": "NJ", "NEW MEXICO": "NM", "NEW YORK": "NY",
+    "NORTH CAROLINA": "NC", "NORTH DAKOTA": "ND", "OHIO": "OH", "OKLAHOMA": "OK",
+    "OREGON": "OR", "PENNSYLVANIA": "PA", "RHODE ISLAND": "RI",
+    "SOUTH CAROLINA": "SC", "SOUTH DAKOTA": "SD", "TENNESSEE": "TN", "TEXAS": "TX",
+    "UTAH": "UT", "VERMONT": "VT", "VIRGINIA": "VA", "WASHINGTON": "WA",
+    "WEST VIRGINIA": "WV", "WISCONSIN": "WI", "WYOMING": "WY"
+}
+
+
+def infer_state_from_race_label(race):
+    import re
+
+    text = str(race).strip().upper()
+
+    # "OH Senate", "ME Senate", etc.
+    match = re.match(r"^([A-Z]{2})\b", text)
+    if match and match.group(1) in STATE_CODES:
+        return match.group(1)
+
+    # "Ohio Senate", "North Carolina Senate", etc.
+    for name, code in STATE_NAMES_TO_CODES.items():
+        if text.startswith(name + " "):
+            return code
+
+    return None
 
 def read_csv_safe(path: Path) -> pd.DataFrame:
     if not path.exists():
@@ -242,15 +288,25 @@ with tab_overview:
         if seat_dist.empty:
             st.info("No seat distribution file found.")
         else:
+            seat_dist = seat_dist.copy()
+            seat_dist["Control"] = seat_dist["dem_seats"].apply(
+                lambda x: "Democratic Senate" if x >= SENATE_CONTROL_THRESHOLD else "Republican Senate"
+            )
+
             fig = px.bar(
                 seat_dist,
                 x="dem_seats",
                 y="probability",
+                color="Control",
+                color_discrete_map={
+                    "Democratic Senate": DEM_COLOR,
+                    "Republican Senate": GOP_COLOR,
+                },
                 labels={"dem_seats": "Democratic Seats", "probability": "Probability"},
                 text=seat_dist["probability"].map(lambda v: f"{v:.1%}"),
             )
             fig.update_traces(textposition="outside")
-            fig.update_layout(yaxis_tickformat=".0%", showlegend=False)
+            fig.update_layout(yaxis_tickformat=".0%", showlegend=True)
             st.plotly_chart(fig, use_container_width=True)
 
     with right:
@@ -298,14 +354,24 @@ with tab_races:
             "dem_win_counts_for_seat_change": "Seat Gain If Dem Wins",
         }), use_container_width=True, hide_index=True)
 
+        chart_df = race_stats.sort_values("simulated_dem_win_prob").copy()
+        chart_df["Favored Party"] = chart_df["simulated_dem_win_prob"].apply(
+            lambda p: "Democrat" if float(p) >= 0.5 else "Republican"
+        )
+
         fig = px.bar(
-            race_stats.sort_values("simulated_dem_win_prob"),
+            chart_df,
             x="simulated_dem_win_prob",
             y="state",
             orientation="h",
+            color="Favored Party",
+            color_discrete_map={
+                "Democrat": DEM_COLOR,
+                "Republican": GOP_COLOR,
+            },
             labels={"simulated_dem_win_prob": "Democratic Win Probability", "state": "State"},
         )
-        fig.update_layout(xaxis_tickformat=".0%")
+        fig.update_layout(xaxis_tickformat=".0%", showlegend=True)
         st.plotly_chart(fig, use_container_width=True)
 
 with tab_scenarios:
@@ -419,7 +485,7 @@ with st.form("manual_poll_entry_form"):
 
         new_poll = pd.DataFrame([{
             "race": race,
-            "state": state,
+            "state": inferred_state if inferred_state else state,
             "chamber": chamber,
             "pollster": pollster,
             "pollster_grade": pollster_grade,

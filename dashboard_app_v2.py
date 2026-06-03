@@ -4,6 +4,11 @@ import numpy as np
 import streamlit as st
 import plotly.express as px
 
+DEM_COLOR = "#1f77b4"
+GOP_COLOR = "#d62728"
+SENATE_CONTROL_THRESHOLD = 51
+
+
 INPUTS = Path("inputs")
 OUTPUTS = Path("outputs")
 
@@ -15,6 +20,47 @@ st.set_page_config(
 # -----------------------------
 # Helpers
 # -----------------------------
+STATE_CODES = {
+    "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+    "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+    "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+    "VA","WA","WV","WI","WY"
+}
+
+STATE_NAMES_TO_CODES = {
+    "ALABAMA": "AL", "ALASKA": "AK", "ARIZONA": "AZ", "ARKANSAS": "AR",
+    "CALIFORNIA": "CA", "COLORADO": "CO", "CONNECTICUT": "CT", "DELAWARE": "DE",
+    "FLORIDA": "FL", "GEORGIA": "GA", "HAWAII": "HI", "IDAHO": "ID",
+    "ILLINOIS": "IL", "INDIANA": "IN", "IOWA": "IA", "KANSAS": "KS",
+    "KENTUCKY": "KY", "LOUISIANA": "LA", "MAINE": "ME", "MARYLAND": "MD",
+    "MASSACHUSETTS": "MA", "MICHIGAN": "MI", "MINNESOTA": "MN", "MISSISSIPPI": "MS",
+    "MISSOURI": "MO", "MONTANA": "MT", "NEBRASKA": "NE", "NEVADA": "NV",
+    "NEW HAMPSHIRE": "NH", "NEW JERSEY": "NJ", "NEW MEXICO": "NM", "NEW YORK": "NY",
+    "NORTH CAROLINA": "NC", "NORTH DAKOTA": "ND", "OHIO": "OH", "OKLAHOMA": "OK",
+    "OREGON": "OR", "PENNSYLVANIA": "PA", "RHODE ISLAND": "RI",
+    "SOUTH CAROLINA": "SC", "SOUTH DAKOTA": "SD", "TENNESSEE": "TN", "TEXAS": "TX",
+    "UTAH": "UT", "VERMONT": "VT", "VIRGINIA": "VA", "WASHINGTON": "WA",
+    "WEST VIRGINIA": "WV", "WISCONSIN": "WI", "WYOMING": "WY"
+}
+
+
+def infer_state_from_race_label(race):
+    import re
+
+    text = str(race).strip().upper()
+
+    # "OH Senate", "ME Senate", etc.
+    match = re.match(r"^([A-Z]{2})\b", text)
+    if match and match.group(1) in STATE_CODES:
+        return match.group(1)
+
+    # "Ohio Senate", "North Carolina Senate", etc.
+    for name, code in STATE_NAMES_TO_CODES.items():
+        if text.startswith(name + " "):
+            return code
+
+    return None
+
 def read_csv_safe(path):
     try:
         if Path(path).exists():
@@ -181,10 +227,20 @@ with tab_overview:
                     break
 
             if x_col and y_col:
+                sd = sd.copy()
+                sd["Control"] = sd[x_col].apply(
+                    lambda x: "Democratic Senate" if float(x) >= SENATE_CONTROL_THRESHOLD else "Republican Senate"
+                )
+
                 fig = px.bar(
                     sd,
                     x=x_col,
                     y=y_col,
+                    color="Control",
+                    color_discrete_map={
+                        "Democratic Senate": DEM_COLOR,
+                        "Republican Senate": GOP_COLOR,
+                    },
                     labels={
                         x_col: "Democratic seats",
                         y_col: "Probability",
@@ -302,11 +358,20 @@ with tab_races:
         chart_df["Dem win probability"] = chart_df["simulated_dem_win_prob_num"]
         chart_df["State"] = chart_df["state"]
 
+        chart_df["Favored Party"] = chart_df["Dem win probability"].apply(
+            lambda p: "Democrat" if float(p) >= 0.5 else "Republican"
+        )
+
         fig = px.bar(
             chart_df,
             x="Dem win probability",
             y="State",
             orientation="h",
+            color="Favored Party",
+            color_discrete_map={
+                "Democrat": DEM_COLOR,
+                "Republican": GOP_COLOR,
+            },
             hover_data=[
                 "dem_candidate",
                 "gop_candidate",
@@ -800,6 +865,11 @@ with tab_manual_polls:
         submitted = st.form_submit_button("Save New Poll")
 
         if submitted:
+            new_inferred_state = infer_state_from_race_label(race)
+        if inferred_state and "state" in locals() and str(state).strip().upper() != inferred_state:
+            st.warning(
+                f"State corrected from {state} to {inferred_state} based on selected race."
+            )
             new_row = {
                 "race": race,
                 "state": state.strip().upper(),
