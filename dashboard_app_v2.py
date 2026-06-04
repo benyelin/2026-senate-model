@@ -865,14 +865,11 @@ with tab_manual_polls:
         submitted = st.form_submit_button("Save New Poll")
 
         if submitted:
-            new_inferred_state = infer_state_from_race_label(race)
-        if inferred_state and "state" in locals() and str(state).strip().upper() != inferred_state:
-            st.warning(
-                f"State corrected from {state} to {inferred_state} based on selected race."
-            )
+            inferred_state = infer_state_from_race_label(race)
+            safe_poll_state = inferred_state if inferred_state else state
             new_row = {
                 "race": race,
-                "state": state.strip().upper(),
+                "state": str(safe_poll_state).strip().upper(),
                 "chamber": chamber,
                 "pollster": pollster,
                 "pollster_grade": pollster_grade,
