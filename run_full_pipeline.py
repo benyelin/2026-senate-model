@@ -41,6 +41,7 @@ def main():
     run([py, "update_candidate_quality.py"])
     run([py, "sync_candidate_quality_fields.py"])
     run([py, "recalculate_fundamentals.py"])
+    run([py, "audit_senate_fundamentals_components.py"])
     run([py, "validate_manual_polls.py"])
     run([py, "ingest_polls.py", "--as-of", as_of])
     run([py, "bayesian_update.py", "--days-out", str(days_out)])

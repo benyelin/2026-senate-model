@@ -117,6 +117,40 @@ STATE_OVERRIDES = {
 
 
 
+
+def calculate_fundamentals_margin_from_components(df):
+    """
+    Recalculate fundamentals_margin_dem from the visible component columns.
+
+    This keeps the dashboard/audit decomposition aligned with the actual
+    fundamentals margin used by the model.
+    """
+    import pandas as pd
+
+    component_cols = [
+        "state_partisan_baseline_dem",
+        "state_environment_adjustment_dem",
+        "incumbency_adjustment_dem",
+        "overperformance_adjustment_dem",
+        "candidate_liability_adjustment_dem",
+        "candidate_quality_adjustment_dem",
+        "special_adjustment_dem",
+    ]
+
+    df = df.copy()
+
+    for col in component_cols:
+        if col not in df.columns:
+            df[col] = 0.0
+
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    df["fundamentals_component_sum_dem"] = df[component_cols].sum(axis=1)
+    df["fundamentals_margin_dem"] = df["fundamentals_component_sum_dem"]
+
+    return df
+
+
 def sync_candidate_quality_adjustment(df):
     """
     Rebuild candidate_quality_adjustment_dem from objective/manual/gate fields
@@ -386,13 +420,25 @@ def main():
     # This ensures calculated candidate quality survives the fundamentals step.
     races = sync_candidate_quality_adjustment(races)
 
-    races["fundamentals_margin_dem"] = (
-        races["state_partisan_baseline_dem"]
-        + races["state_environment_adjustment_dem"]
-        + races["incumbency_adjustment_dem"]
-        + races["candidate_quality_adjustment_dem"]
-        + races["special_adjustment_dem"]
-    )
+    # Fundamentals are the sum of the visible component columns.
+    # Keep this aligned with the dashboard/audit decomposition.
+    component_cols = [
+        "state_partisan_baseline_dem",
+        "state_environment_adjustment_dem",
+        "incumbency_adjustment_dem",
+        "overperformance_adjustment_dem",
+        "candidate_liability_adjustment_dem",
+        "candidate_quality_adjustment_dem",
+        "special_adjustment_dem",
+    ]
+    
+    for col in component_cols:
+        if col not in races.columns:
+            races[col] = 0.0
+        races[col] = pd.to_numeric(races[col], errors="coerce").fillna(0.0)
+    
+    races["fundamentals_component_sum_dem"] = races[component_cols].sum(axis=1)
+    races["fundamentals_margin_dem"] = races["fundamentals_component_sum_dem"]
 
     # Add notes for non-override states.
     presidential_note = (
