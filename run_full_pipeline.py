@@ -48,6 +48,7 @@ def main():
     run([py, "cap_bayesian_poll_weight.py"])
     run([py, "sync_senate_model_fields.py"])
     run([py, "run_model.py", "--today", as_of, "--sims", str(args.sims)])
+    run([py, "append_senate_forecast_history.py"])
     run([py, "scenario_runner.py"])
 
     print("\nPipeline complete.")

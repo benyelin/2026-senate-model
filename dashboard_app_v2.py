@@ -145,6 +145,7 @@ def load_data():
         "polling": normalize_state(read_csv_safe(INPUTS / "polling_averages_generated.csv")),
         "bayes": normalize_state(read_csv_safe(INPUTS / "bayesian_update_generated.csv")),
         "national_env": read_csv_safe(INPUTS / "national_environment.csv"),
+        "forecast_history": read_csv_safe(OUTPUTS / "senate_forecast_history.csv"),
     }
     return data
 
@@ -159,6 +160,7 @@ race_inputs = data["race_inputs"]
 polling = data["polling"]
 bayes = data["bayes"]
 national_env = data["national_env"]
+forecast_history = data.get("forecast_history", pd.DataFrame())
 
 # -----------------------------
 # Header
@@ -249,52 +251,9 @@ with tab_overview:
                 )
                 fig.update_layout(yaxis_tickformat=".0%")
                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.dataframe(sd, use_container_width=True, hide_index=True)
+
 
     with right:
-        st.subheader("Most Important Races")
-
-        if race_stats.empty:
-            st.info("No race stats found.")
-        else:
-            rs = race_stats.copy()
-
-            if "tipping_share_of_control_sims" in rs.columns:
-                rs["tipping_share_of_control_sims"] = pd.to_numeric(
-                    rs["tipping_share_of_control_sims"],
-                    errors="coerce"
-                )
-                top = rs.sort_values("tipping_share_of_control_sims", ascending=False).head(10)
-            elif "simulated_dem_win_prob" in rs.columns:
-                rs["distance_to_50"] = (
-                    pd.to_numeric(rs["simulated_dem_win_prob"], errors="coerce") - 0.5
-                ).abs()
-                top = rs.sort_values("distance_to_50").head(10)
-            else:
-                top = rs.head(10)
-
-            rows = []
-            for _, row in top.iterrows():
-                rows.append(
-                    {
-                        "State": row.get("state", ""),
-                        "Race": f"{row.get('dem_candidate', '')} vs. {row.get('gop_candidate', '')}",
-                        "Dem odds": fmt_pct(row.get("simulated_dem_win_prob")),
-                        "Model margin": fmt_margin(row.get("model_margin_dem")),
-                        "Tipping share": fmt_pct(row.get("tipping_share_of_control_sims")),
-                    }
-                )
-
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-    st.divider()
-
-    st.subheader("Competitive Race Snapshot")
-
-    if race_stats.empty:
-        st.info("No race stats found.")
-    else:
         comp = race_stats.copy()
         comp["simulated_dem_win_prob"] = pd.to_numeric(
             comp.get("simulated_dem_win_prob"),
@@ -318,6 +277,62 @@ with tab_overview:
             )
 
         st.dataframe(pd.DataFrame(display), use_container_width=True, hide_index=True)
+
+
+    st.divider()
+    st.subheader("Model Odds Over Time")
+
+    if forecast_history.empty:
+        st.info("No forecast history yet. Run the Senate full pipeline to start building the time series.")
+    else:
+        history = forecast_history.copy()
+
+        if "timestamp" in history.columns:
+            history["timestamp"] = pd.to_datetime(history["timestamp"], errors="coerce")
+            history = history.dropna(subset=["timestamp"]).sort_values("timestamp")
+            history["Run"] = history["timestamp"].dt.strftime("%b %d, %I:%M %p")
+        elif "run_date" in history.columns:
+            history["Run"] = history["run_date"].astype(str)
+        else:
+            history["Run"] = range(1, len(history) + 1)
+
+        if "dem_control_probability" in history.columns:
+            history["Dem control odds"] = pd.to_numeric(
+                history["dem_control_probability"],
+                errors="coerce",
+            ) * 100
+
+            fig_history = px.line(
+                history,
+                x="Run",
+                y="Dem control odds",
+                markers=True,
+                labels={
+                    "Run": "Run",
+                    "Dem control odds": "Democratic Senate control odds (%)",
+                },
+                title="Senate Democratic Control Odds Over Time",
+            )
+            fig_history.update_layout(yaxis_ticksuffix="%", yaxis_range=[0, 100])
+            st.plotly_chart(fig_history, use_container_width=True)
+        else:
+            st.info("Forecast history exists, but no dem_control_probability column was found.")
+
+        with st.expander("Forecast history table"):
+            display_cols = [
+                "timestamp",
+                "days_out",
+                "expected_dem_seats",
+                "median_dem_seats",
+                "dem_control_probability",
+                "national_environment_margin",
+                "polling_weight",
+                "fundamentals_weight",
+                "total_error_sd",
+            ]
+            display_cols = [c for c in display_cols if c in history.columns]
+            st.dataframe(history[display_cols].tail(25), use_container_width=True, hide_index=True)
+
 
 # -----------------------------
 # Race Ratings
