@@ -157,6 +157,8 @@ def check_pipeline_sync_integrity(errors, warnings, info):
         "state_partisan_baseline_dem",
         "state_environment_adjustment_dem",
         "incumbency_adjustment_dem",
+        "overperformance_adjustment_dem",
+        "candidate_liability_adjustment_dem",
         "candidate_quality_adjustment_dem",
         "special_adjustment_dem",
         "fundamentals_margin_dem",
@@ -167,6 +169,8 @@ def check_pipeline_sync_integrity(errors, warnings, info):
             pd.to_numeric(races["state_partisan_baseline_dem"], errors="coerce").fillna(0.0)
             + pd.to_numeric(races["state_environment_adjustment_dem"], errors="coerce").fillna(0.0)
             + pd.to_numeric(races["incumbency_adjustment_dem"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(races["overperformance_adjustment_dem"], errors="coerce").fillna(0.0)
+            + pd.to_numeric(races["candidate_liability_adjustment_dem"], errors="coerce").fillna(0.0)
             + pd.to_numeric(races["candidate_quality_adjustment_dem"], errors="coerce").fillna(0.0)
             + pd.to_numeric(races["special_adjustment_dem"], errors="coerce").fillna(0.0)
         )
@@ -593,13 +597,13 @@ def main():
         else:
             info.append(f"Scenario summary contains {len(scenarios)} scenarios.")
 
+    check_pipeline_sync_integrity(errors, warnings, info)
+
     print_messages("Errors", errors)
     print_messages("Warnings", warnings)
     print_messages("Info", info)
 
     print()
-
-    check_pipeline_sync_integrity(errors, warnings, info)
 
     if errors:
         print("Health check result: FAIL")
