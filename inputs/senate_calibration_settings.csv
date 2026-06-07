@@ -1,0 +1,6 @@
+setting,value,notes
+senate_candidate_war_min_name_score,0.9,Minimum name match score for Senate candidate WAR audit.
+senate_candidate_war_shrinkage,0.35,Shrinkage applied to Senate WAR-implied adjustment for audit comparison.
+senate_candidate_war_cap,3.0,Maximum absolute proposed Senate WAR adjustment for audit comparison.
+senate_candidate_war_one_sided_multiplier,0.5,Multiplier when only one Senate candidate matches WAR data.
+senate_house_war_transfer_multiplier,0.5,Additional discount when House WAR is transferred to statewide Senate context.
