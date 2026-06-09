@@ -11,7 +11,6 @@ REQUIRED_COLUMNS = [
     "chamber",
     "pollster",
     "pollster_grade",
-    "house_effect_dem",
     "start_date",
     "end_date",
     "sample_size",
@@ -78,6 +77,13 @@ def normalize_manual_polls():
         raise FileNotFoundError(f"Could not find {RAW_PATH}")
 
     df = pd.read_csv(RAW_PATH)
+
+    # House-effect adjustments are no longer manually entered.
+    # Keep a generated default for compatibility with downstream polling math.
+    if "house_effect_dem" not in df.columns:
+        df["house_effect_dem"] = 0.0
+    else:
+        df["house_effect_dem"] = pd.to_numeric(df["house_effect_dem"], errors="coerce").fillna(0.0)
     validate_columns(df)
 
     errors = []
@@ -263,7 +269,6 @@ def normalize_manual_polls():
         "chamber",
         "pollster",
         "pollster_grade",
-        "house_effect_dem",
         "start_date",
         "end_date",
         "mid_date",
