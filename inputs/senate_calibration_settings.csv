@@ -4,3 +4,8 @@ senate_candidate_war_shrinkage,0.35,Shrinkage applied to Senate WAR-implied adju
 senate_candidate_war_cap,3.0,Maximum absolute proposed Senate WAR adjustment for audit comparison.
 senate_candidate_war_one_sided_multiplier,0.5,Multiplier when only one Senate candidate matches WAR data.
 senate_house_war_transfer_multiplier,0.5,Additional discount when House WAR is transferred to statewide Senate context.
+use_partisan_pollster_adjustments,1.0,"0/1 toggle. If 1, partisan/campaign-sponsored Senate polls receive margin adjustment and weight discount."
+partisan_pollster_default_adjustment,2.0,Default points adjustment against sponsoring party.
+partisan_pollster_internal_adjustment,2.5,Points adjustment against sponsoring party for campaign/internal polls.
+partisan_pollster_max_adjustment,3.0,Hard cap on partisan pollster margin adjustment.
+partisan_pollster_weight_multiplier,0.5,Weight multiplier for partisan/campaign-sponsored polls.

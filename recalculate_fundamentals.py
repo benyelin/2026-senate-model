@@ -412,6 +412,7 @@ def main():
     races["national_environment_margin_dem"] = national_environment
 
     races["state_environment_adjustment_dem"] = (
+
         races["national_environment_margin_dem"]
         * races["state_elasticity"]
     )

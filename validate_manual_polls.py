@@ -2,7 +2,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-RAW_PATH = Path("inputs/manual_polls.csv")
+RAW_PATH = Path("inputs/manual_polls_adjusted.csv") if Path("inputs/manual_polls_adjusted.csv").exists() else Path("inputs/manual_polls.csv")
 OUT_PATH = Path("outputs/manual_polls_clean.csv")
 
 REQUIRED_COLUMNS = [
