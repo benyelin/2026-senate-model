@@ -46,7 +46,7 @@ def main():
     run([py, "validate_manual_polls.py"])
     run([py, "ingest_polls.py", "--as-of", as_of])
     run([py, "bayesian_update.py", "--days-out", str(days_out)])
-    run([py, "apply_senate_bayesian_weight_cap.py"])
+    run([py, "apply_senate_bayesian_weight_cap.py", "--days-out", str(days_out)])
     run([py, "sync_bayesian_poll_metadata.py"])
     run([py, "cap_bayesian_poll_weight.py"])
     run([py, "sync_senate_model_fields.py"])

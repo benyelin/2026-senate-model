@@ -517,7 +517,14 @@ def main():
             bayes["state"] = bayes["state"].astype(str).str.strip().str.upper()
 
         weight_col = None
-        for col in ["bayesian_polling_weight", "polling_weight", "poll_weight"]:
+        # Prefer capped Bayesian polling weight when available; the uncapped
+        # column is retained for audit only.
+        for col in [
+            "bayesian_polling_weight_capped",
+            "bayesian_polling_weight",
+            "polling_weight",
+            "poll_weight",
+        ]:
             if col in bayes.columns:
                 weight_col = col
                 break
