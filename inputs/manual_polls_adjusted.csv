@@ -21,3 +21,4 @@ TX Senate,TX,Senate,ReconMR,B,,,,False,,,2026-06-01,2026-06-04,807,LV,Talarico,P
 ME Senate,ME,Senate,TPSI,B,,,,False,,,2026-06-08,2026-06-08,497,LV,Platner,Collins,,,43.1,43.7,0.0,0.0,13.2,,43.1,43.7,-0.6000000000000014,0.0,1.0,False,No partisan pollster adjustment,-0.6000000000000014
 AK-Senate,AK,Senate,Alaska Survey Research,B,,media,,False,,,2026-06-04,2026-06-07,800,LV,Peltola,Sullivan,,,49.4,44.2,0.0,6.4,0.0,,49.4,44.2,5.199999999999996,0.0,1.0,False,No partisan pollster adjustment,5.199999999999996
 ME-Senate,ME,Senate,Quantus Insights,B,,party,R,False,R,,2026-06-09,2026-06-11,870,LV,,,,,47.25,43.75,0.0,0.0,9.0,,46.0,45.0,1.0,2.5,0.5,True,R-sponsored internal/campaign poll: applied +2.5 point Dem-margin adjustment and 0.50 weight multiplier,3.5
+ME-Senate,ME,Senate,2Way/Wick,C+,,media,,False,,,2026-06-16,2026-06-16,800,LV,Platner,Collins,,,47.6,45.4,0.0,0.0,7.0,,47.6,45.4,2.200000000000003,0.0,1.0,False,No partisan pollster adjustment,2.200000000000003
