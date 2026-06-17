@@ -289,3 +289,285 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# --- BEGIN POLLING CONFIDENCE ACCELERATOR FINALIZER ---
+# Runs after the ordinary Bayesian cap step. This makes polling-confidence acceleration
+# part of the official model-driving Bayesian fields, rather than a separate audit-only step.
+if __name__ == "__main__":
+    try:
+        from pathlib import Path
+        from datetime import datetime
+        import pandas as pd
+
+        INPUTS = Path("inputs")
+        OUTPUTS = Path("outputs")
+        OUTPUTS.mkdir(exist_ok=True)
+
+        BAYES = INPUTS / "bayesian_update_generated.csv"
+        RACES = INPUTS / "race_inputs.csv"
+        POLL_FILES = [INPUTS / "manual_polls_adjusted.csv", INPUTS / "manual_polls.csv"]
+        AUDIT = OUTPUTS / "senate_polling_confidence_accelerator_audit.csv"
+
+        RECENT_DAYS = 45
+        LABOR_DAY_2026 = pd.Timestamp("2026-09-07")
+        PRE_LABOR_DAY_ABSOLUTE_CAP = 0.30
+        POST_LABOR_DAY_ABSOLUTE_CAP = 0.45
+
+        def safe_num(s, default=0.0):
+            return pd.to_numeric(s, errors="coerce").fillna(default)
+
+        def norm_state(x):
+            if pd.isna(x):
+                return ""
+            return str(x).strip().upper()
+
+        def state_from_race(x):
+            if pd.isna(x):
+                return ""
+            txt = str(x).strip().upper()
+            if len(txt) == 2 and txt.isalpha():
+                return txt
+            parts = txt.replace("_", "-").replace("/", "-").replace(" ", "-").split("-")
+            for p in parts:
+                p = p.strip()
+                if len(p) == 2 and p.isalpha():
+                    return p
+            return ""
+
+        def pick_col(df, names):
+            for n in names:
+                if n in df.columns:
+                    return n
+            return None
+
+        def first_existing(paths):
+            for p in paths:
+                if p.exists():
+                    return p
+            return None
+
+        poll_path = first_existing(POLL_FILES)
+
+        if BAYES.exists() and RACES.exists() and poll_path is not None:
+            bayes = pd.read_csv(BAYES)
+            races = pd.read_csv(RACES)
+            polls = pd.read_csv(poll_path)
+
+            # Build recent poll counts.
+            state_col = pick_col(polls, ["state", "State"])
+            race_col = pick_col(polls, ["race", "Race", "contest", "Contest"])
+            end_col = pick_col(polls, ["end_date", "poll_end_date", "field_end", "date", "poll_date"])
+            sample_col = pick_col(polls, ["sample_size", "n", "Sample Size", "sample"])
+
+            if state_col:
+                polls["state_norm"] = polls[state_col].apply(norm_state)
+            elif race_col:
+                polls["state_norm"] = polls[race_col].apply(state_from_race)
+            else:
+                polls["state_norm"] = ""
+
+            if end_col:
+                polls["poll_end_dt"] = pd.to_datetime(polls[end_col], errors="coerce")
+            else:
+                polls["poll_end_dt"] = pd.NaT
+
+            if sample_col:
+                polls["sample_size_num"] = safe_num(polls[sample_col], 0.0)
+            else:
+                polls["sample_size_num"] = 1.0
+
+            usable = polls[
+                polls["state_norm"].astype(str).str.len().eq(2)
+                & polls["poll_end_dt"].notna()
+                & polls["sample_size_num"].gt(0)
+            ].copy()
+
+            today = pd.Timestamp(datetime.now().date())
+            cutoff = today - pd.Timedelta(days=RECENT_DAYS)
+
+            recent = usable[usable["poll_end_dt"] >= cutoff].copy()
+
+            if recent.empty:
+                counts = pd.DataFrame(columns=[
+                    "state",
+                    "recent_poll_count_45d",
+                    "most_recent_poll_end_date",
+                    "polling_confidence_boost",
+                ])
+            else:
+                counts = (
+                    recent.groupby("state_norm")
+                    .agg(
+                        recent_poll_count_45d=("state_norm", "size"),
+                        most_recent_poll_end_date=("poll_end_dt", "max"),
+                    )
+                    .reset_index()
+                    .rename(columns={"state_norm": "state"})
+                )
+
+                def boost(n):
+                    n = int(n)
+                    if n >= 4:
+                        return 0.09
+                    if n == 3:
+                        return 0.06
+                    if n == 2:
+                        return 0.03
+                    return 0.0
+
+                counts["polling_confidence_boost"] = counts["recent_poll_count_45d"].apply(boost)
+                counts["most_recent_poll_end_date"] = counts["most_recent_poll_end_date"].dt.strftime("%Y-%m-%d")
+
+            # Clean stale accelerator columns before merge.
+            stale = [
+                c for c in bayes.columns
+                if (
+                    "polling_confidence" in c
+                    or "recent_poll_count_45d" in c
+                    or "most_recent_poll_end_date" in c
+                    or "after_polling_confidence_accelerator" in c
+                    or "before_polling_confidence_accelerator" in c
+                )
+            ]
+            bayes = bayes.drop(columns=stale, errors="ignore")
+
+            bayes["state_norm"] = bayes["state"].apply(norm_state)
+
+            merged = bayes.merge(
+                counts,
+                left_on="state_norm",
+                right_on="state",
+                how="left",
+                suffixes=("", "_poll_counts"),
+            )
+
+            for col in ["recent_poll_count_45d", "polling_confidence_boost"]:
+                if col not in merged.columns:
+                    merged[col] = 0
+
+            merged["recent_poll_count_45d"] = safe_num(merged["recent_poll_count_45d"], 0).astype(int)
+            merged["polling_confidence_boost"] = safe_num(merged["polling_confidence_boost"], 0.0)
+
+            absolute_cap = (
+                PRE_LABOR_DAY_ABSOLUTE_CAP
+                if today < LABOR_DAY_2026
+                else POST_LABOR_DAY_ABSOLUTE_CAP
+            )
+            merged["polling_confidence_absolute_cap"] = absolute_cap
+
+            if "bayesian_polling_weight_capped" not in merged.columns:
+                merged["bayesian_polling_weight_capped"] = safe_num(merged.get("bayesian_polling_weight", 0.0), 0.0)
+
+            base_weight = safe_num(merged["bayesian_polling_weight_capped"], 0.0).clip(lower=0.0, upper=1.0)
+            merged["bayesian_polling_weight_capped_before_polling_confidence_accelerator"] = base_weight
+
+            accelerated_weight = (base_weight + merged["polling_confidence_boost"]).clip(
+                lower=0.0,
+                upper=absolute_cap,
+            )
+
+            prior = safe_num(merged["prior_margin_dem"], 0.0)
+            poll_margin = safe_num(merged["polling_margin_used"], 0.0)
+
+            if "bayesian_model_margin_dem_capped" not in merged.columns:
+                merged["bayesian_model_margin_dem_capped"] = prior * (1.0 - base_weight) + poll_margin * base_weight
+
+            merged["bayesian_model_margin_dem_capped_before_polling_confidence_accelerator"] = safe_num(
+                merged["bayesian_model_margin_dem_capped"], 0.0
+            )
+
+            accelerated_margin = prior * (1.0 - accelerated_weight) + poll_margin * accelerated_weight
+
+            # Authoritative Bayesian fields.
+            merged["bayesian_polling_weight"] = accelerated_weight
+            merged["bayesian_polling_weight_capped"] = accelerated_weight
+            merged["bayesian_prior_weight"] = 1.0 - accelerated_weight
+            merged["bayesian_fundamentals_weight_capped"] = 1.0 - accelerated_weight
+
+            merged["bayesian_model_margin_dem"] = accelerated_margin
+            merged["bayesian_model_margin_dem_capped"] = accelerated_margin
+            merged["posterior_margin_dem"] = accelerated_margin
+            merged["posterior_margin_dem_capped"] = accelerated_margin
+
+            merged["bayesian_polling_weight_capped_after_polling_confidence_accelerator"] = accelerated_weight
+            merged["polling_confidence_weight_change"] = (
+                merged["bayesian_polling_weight_capped_after_polling_confidence_accelerator"]
+                - merged["bayesian_polling_weight_capped_before_polling_confidence_accelerator"]
+            )
+            merged["polling_confidence_margin_change_dem"] = (
+                merged["bayesian_model_margin_dem_capped"]
+                - merged["bayesian_model_margin_dem_capped_before_polling_confidence_accelerator"]
+            )
+
+            # Save Bayesian update file.
+            bayes_out = merged.drop(columns=["state_norm", "state_poll_counts"], errors="ignore")
+            bayes_out.to_csv(BAYES, index=False)
+
+            # Sync race_inputs canonical fields.
+            races["state_norm"] = races["state"].apply(norm_state)
+
+            sync_cols = [
+                "state_norm",
+                "bayesian_polling_weight",
+                "bayesian_polling_weight_capped",
+                "bayesian_prior_weight",
+                "bayesian_fundamentals_weight_capped",
+                "bayesian_model_margin_dem",
+                "bayesian_model_margin_dem_capped",
+                "posterior_margin_dem",
+                "posterior_margin_dem_capped",
+                "polling_confidence_boost",
+                "polling_confidence_absolute_cap",
+                "polling_confidence_weight_change",
+                "polling_confidence_margin_change_dem",
+                "recent_poll_count_45d",
+                "most_recent_poll_end_date",
+                "bayesian_polling_weight_capped_before_polling_confidence_accelerator",
+                "bayesian_polling_weight_capped_after_polling_confidence_accelerator",
+                "bayesian_model_margin_dem_capped_before_polling_confidence_accelerator",
+            ]
+            sync_cols = [c for c in sync_cols if c in merged.columns]
+
+            sync = merged[sync_cols].drop_duplicates("state_norm")
+
+            # Drop stale fields in races so merge is clean.
+            stale_races = [c for c in races.columns if c in sync_cols and c != "state_norm"]
+            races = races.drop(columns=stale_races, errors="ignore")
+
+            races = races.merge(sync, on="state_norm", how="left")
+            races = races.drop(columns=["state_norm"], errors="ignore")
+            races.to_csv(RACES, index=False)
+
+            audit_cols = [
+                "state_norm",
+                "recent_poll_count_45d",
+                "most_recent_poll_end_date",
+                "polling_confidence_boost",
+                "polling_confidence_absolute_cap",
+                "bayesian_polling_weight_capped_before_polling_confidence_accelerator",
+                "bayesian_polling_weight_capped_after_polling_confidence_accelerator",
+                "polling_confidence_weight_change",
+                "polling_confidence_margin_change_dem",
+                "bayesian_model_margin_dem_capped_before_polling_confidence_accelerator",
+                "bayesian_model_margin_dem_capped",
+            ]
+            audit_cols = [c for c in audit_cols if c in merged.columns]
+
+            audit = (
+                merged[audit_cols]
+                .drop_duplicates("state_norm")
+                .sort_values(["polling_confidence_weight_change", "recent_poll_count_45d"], ascending=[False, False])
+            )
+            audit.to_csv(AUDIT, index=False)
+
+            print("Applied polling-confidence accelerator inside Bayesian cap step.")
+            me = audit[audit["state_norm"].eq("ME")]
+            if not me.empty:
+                print("Maine polling-confidence accelerator:")
+                print(me.to_string(index=False))
+
+    except Exception as e:
+        print(f"WARNING: polling-confidence accelerator finalizer failed: {e}")
+# --- END POLLING CONFIDENCE ACCELERATOR FINALIZER ---
+

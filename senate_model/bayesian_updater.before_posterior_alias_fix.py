@@ -170,18 +170,6 @@ def run_bayesian_update(
     )
 
     races_updated["pre_bayes_model_margin_dem"] = races_updated["fundamentals_margin_dem"]
-    # Robust posterior alias handling.
-    # Some downstream scripts use posterior_margin_dem, while the Bayesian updater itself
-    # may only have bayesian_model_margin_dem / posterior_margin_dem_capped depending on
-    # pipeline order. Ensure the aliases exist before reading them.
-    if "posterior_margin_dem" not in races_updated.columns:
-        if "bayesian_model_margin_dem" in races_updated.columns:
-            races_updated["posterior_margin_dem"] = races_updated["bayesian_model_margin_dem"]
-        elif "posterior_margin_dem_capped" in races_updated.columns:
-            races_updated["posterior_margin_dem"] = races_updated["posterior_margin_dem_capped"]
-        else:
-            races_updated["posterior_margin_dem"] = races_updated["fundamentals_margin_dem"]
-
     races_updated["bayesian_model_margin_dem"] = races_updated["posterior_margin_dem"].fillna(
         races_updated["fundamentals_margin_dem"]
     )

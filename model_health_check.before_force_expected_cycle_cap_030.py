@@ -49,9 +49,19 @@ def fmt_margin(x):
 
 
 def expected_cycle_cap():
-    # Ordinary June cap is lower, but polling-confidence acceleration
-    # intentionally allows selected well-polled races up to 0.30.
-    return 0.30
+    d = days_out()
+
+    if d > 180:
+        return 0.12
+    if d > 120:
+        return 0.18
+    if d > 60:
+        return 0.35
+    if d > 30:
+        return 0.50
+    return 0.70
+
+
 def print_messages(title, rows):
     print()
     print(title)
