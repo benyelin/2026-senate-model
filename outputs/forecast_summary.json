@@ -1,9 +1,9 @@
 {
   "n_sims": 12000,
   "days_out": 140,
-  "expected_dem_seats": 49.33433333333333,
+  "expected_dem_seats": 49.163,
   "median_dem_seats": 49.0,
-  "dem_control_probability": 0.32975,
+  "dem_control_probability": 0.29825,
   "dem_control_threshold": 51,
   "dem_baseline_seats": 34,
   "total_error_sd": 5.355555555555555,
