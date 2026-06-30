@@ -133,38 +133,9 @@ def run_bayesian_update(
     )
 
     # Only polling from polling_averages_generated.csv counts as current
-    # polling evidence. Do not preserve stale race_inputs.csv poll metadata.
+    # polling evidence. Do not fall back to stale race_inputs.csv values.
     merged["polling_margin_used"] = merged["polling_margin_dem_poll_generated"]
-
-    generated_metadata = {
-        "poll_count": "poll_count_poll_generated",
-        "total_poll_weight": "total_poll_weight_poll_generated",
-        "avg_poll_age_days": "avg_poll_age_days_poll_generated",
-    }
-
-    for target, generated_col in generated_metadata.items():
-        if generated_col in merged.columns:
-            merged[target] = pd.to_numeric(
-                merged[generated_col],
-                errors="coerce",
-            )
-        else:
-            merged[target] = pd.NA
-
-    # effective_poll_count generally has no suffix because the stale input
-    # version was removed before the merge.
-    if "effective_poll_count_poll_generated" in merged.columns:
-        merged["effective_poll_count"] = pd.to_numeric(
-            merged["effective_poll_count_poll_generated"],
-            errors="coerce",
-        )
-    elif "effective_poll_count" in merged.columns:
-        merged["effective_poll_count"] = pd.to_numeric(
-            merged["effective_poll_count"],
-            errors="coerce",
-        )
-    else:
-        merged["effective_poll_count"] = pd.NA
+    merged = _refresh_poll_metadata_from_generated(merged)
 
     merged["poll_count"] = merged["poll_count"].fillna(0)
     merged["effective_poll_count"] = merged["effective_poll_count"].fillna(0)

@@ -62,32 +62,22 @@ def update_race_inputs_from_polls(
 
     polls["state"] = polls["state"].astype(str).str.strip().str.upper()
 
-    # Preserve the observed poll margin. Pollster quality belongs in the
-    # poll weight, not in the margin itself.
-    polls["reported_margin_dem"] = (
-        pd.to_numeric(polls["dem_pct"], errors="coerce")
-        - pd.to_numeric(polls["rep_pct"], errors="coerce")
-    )
-
-    # Use only explicitly additive adjusted-margin fields. Do not use the
-    # legacy final_poll_margin_dem field, which may shrink margins by weight.
-    if "adjusted_margin_dem" in polls.columns:
+    # Use the fully adjusted poll margin if available.
+    if "final_poll_margin_dem" in polls.columns:
         polls["polling_margin_dem"] = pd.to_numeric(
-            polls["adjusted_margin_dem"],
-            errors="coerce",
-        ).fillna(polls["reported_margin_dem"])
-    elif "polling_margin_dem_adjusted" in polls.columns:
-        polls["polling_margin_dem"] = pd.to_numeric(
-            polls["polling_margin_dem_adjusted"],
-            errors="coerce",
-        ).fillna(polls["reported_margin_dem"])
+            polls["final_poll_margin_dem"],
+            errors="coerce"
+        )
     elif "house_effect_adjusted_dem_margin" in polls.columns:
         polls["polling_margin_dem"] = pd.to_numeric(
             polls["house_effect_adjusted_dem_margin"],
-            errors="coerce",
-        ).fillna(polls["reported_margin_dem"])
+            errors="coerce"
+        )
     else:
-        polls["polling_margin_dem"] = polls["reported_margin_dem"]
+        polls["polling_margin_dem"] = (
+            pd.to_numeric(polls["dem_pct"], errors="coerce")
+            - pd.to_numeric(polls["rep_pct"], errors="coerce")
+        )
 
     if "poll_weight" not in polls.columns:
         polls["poll_weight"] = 1.0
@@ -147,7 +137,3 @@ def update_race_inputs_from_polls(
     print(f"Wrote manual-only polling averages to {out_path}")
 
     return avgs
-
-
-if __name__ == "__main__":
-    update_race_inputs_from_polls()

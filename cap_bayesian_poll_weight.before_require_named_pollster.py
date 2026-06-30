@@ -359,7 +359,6 @@ if __name__ == "__main__":
             race_col = pick_col(polls, ["race", "Race", "contest", "Contest"])
             end_col = pick_col(polls, ["end_date", "poll_end_date", "field_end", "date", "poll_date"])
             sample_col = pick_col(polls, ["sample_size", "n", "Sample Size", "sample"])
-            pollster_col = pick_col(polls, ["pollster", "Pollster"])
 
             if state_col:
                 polls["state_norm"] = polls[state_col].apply(norm_state)
@@ -378,22 +377,10 @@ if __name__ == "__main__":
             else:
                 polls["sample_size_num"] = 1.0
 
-            if pollster_col:
-                polls["has_named_pollster"] = (
-                    polls[pollster_col]
-                    .fillna("")
-                    .astype(str)
-                    .str.strip()
-                    .ne("")
-                )
-            else:
-                polls["has_named_pollster"] = False
-
             usable = polls[
                 polls["state_norm"].astype(str).str.len().eq(2)
                 & polls["poll_end_dt"].notna()
                 & polls["sample_size_num"].gt(0)
-                & polls["has_named_pollster"]
             ].copy()
 
             today = pd.Timestamp(datetime.now().date())

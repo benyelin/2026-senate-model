@@ -62,26 +62,17 @@ def update_race_inputs_from_polls(
 
     polls["state"] = polls["state"].astype(str).str.strip().str.upper()
 
-    # Preserve the observed poll margin. Pollster quality belongs in the
-    # poll weight, not in the margin itself.
+    # Preserve the observed poll margin. Pollster quality and undecided
+    # share belong in poll weighting or uncertainty, not as multiplicative
+    # reductions to the reported margin.
     polls["reported_margin_dem"] = (
         pd.to_numeric(polls["dem_pct"], errors="coerce")
         - pd.to_numeric(polls["rep_pct"], errors="coerce")
     )
 
-    # Use only explicitly additive adjusted-margin fields. Do not use the
-    # legacy final_poll_margin_dem field, which may shrink margins by weight.
-    if "adjusted_margin_dem" in polls.columns:
-        polls["polling_margin_dem"] = pd.to_numeric(
-            polls["adjusted_margin_dem"],
-            errors="coerce",
-        ).fillna(polls["reported_margin_dem"])
-    elif "polling_margin_dem_adjusted" in polls.columns:
-        polls["polling_margin_dem"] = pd.to_numeric(
-            polls["polling_margin_dem_adjusted"],
-            errors="coerce",
-        ).fillna(polls["reported_margin_dem"])
-    elif "house_effect_adjusted_dem_margin" in polls.columns:
+    # Retain additive house-effect correction when one exists, but do not
+    # use the legacy final_poll_margin_dem field.
+    if "house_effect_adjusted_dem_margin" in polls.columns:
         polls["polling_margin_dem"] = pd.to_numeric(
             polls["house_effect_adjusted_dem_margin"],
             errors="coerce",
@@ -147,7 +138,3 @@ def update_race_inputs_from_polls(
     print(f"Wrote manual-only polling averages to {out_path}")
 
     return avgs
-
-
-if __name__ == "__main__":
-    update_race_inputs_from_polls()

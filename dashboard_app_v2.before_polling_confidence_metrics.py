@@ -482,12 +482,9 @@ with tab_drivers:
                     "state",
                     "polling_margin_dem",
                     "poll_count",
-                    "effective_poll_count",
                     "latest_poll_end_date",
                     "avg_poll_age_days",
                     "total_poll_weight",
-                    "largest_pollster_weight_share",
-                    "only_partisan_or_internal_polls",
                 ]
                 if c in polling.columns
             ]
@@ -495,42 +492,9 @@ with tab_drivers:
                 columns={
                     "polling_margin_dem": "manual_polling_margin_dem",
                     "poll_count": "manual_poll_count",
-                    "effective_poll_count": "manual_effective_poll_count",
-                    "latest_poll_end_date": "manual_latest_poll_end_date",
-                    "avg_poll_age_days": "manual_avg_poll_age_days",
-                    "total_poll_weight": "manual_total_poll_weight",
-                    "largest_pollster_weight_share": "manual_largest_pollster_weight_share",
-                    "only_partisan_or_internal_polls": "manual_only_partisan_or_internal_polls",
                 }
             )
             audit = audit.merge(poll_view, on="state", how="left")
-
-        if not bayes.empty:
-            bayes_cols = [
-                c for c in [
-                    "state",
-                    "original_bayesian_polling_weight",
-                    "cycle_max_polling_weight",
-                    "poll_count_weight_multiplier",
-                    "bayesian_polling_weight_capped_before_polling_confidence_accelerator",
-                    "recent_poll_count_45d",
-                    "most_recent_poll_end_date",
-                    "polling_confidence_boost",
-                    "polling_confidence_absolute_cap",
-                    "bayesian_polling_weight_capped_after_polling_confidence_accelerator",
-                    "polling_confidence_weight_change",
-                    "polling_confidence_margin_change_dem",
-                    "bayesian_model_margin_dem_capped_before_polling_confidence_accelerator",
-                    "bayesian_model_margin_dem_capped",
-                    "bayesian_posterior_sd_calibrated",
-                ]
-                if c in bayes.columns
-            ]
-            audit = audit.merge(
-                bayes[bayes_cols],
-                on="state",
-                how="left",
-            )
 
         key_default = ["AK", "FL", "GA", "ME", "NC", "OH", "TX"]
         all_states = sorted(audit["state"].dropna().unique().tolist())
@@ -563,35 +527,9 @@ with tab_drivers:
                     "Fundamentals": fmt_margin(row.get("fundamentals_margin_dem")),
                     "Manual polling": fmt_margin(row.get("manual_polling_margin_dem")),
                     "Poll count": fmt_num(row.get("manual_poll_count"), 0),
-                    "Effective polls": fmt_num(row.get("manual_effective_poll_count"), 2),
-                    "Recent polls": fmt_num(row.get("recent_poll_count_45d"), 0),
-                    "Avg. poll age": fmt_num(row.get("manual_avg_poll_age_days"), 1),
-                    "Largest pollster share": fmt_pct(row.get("manual_largest_pollster_weight_share")),
                     "Bayes margin": fmt_margin(row.get("bayesian_model_margin_dem")),
-                    "Raw poll weight": fmt_pct(row.get("original_bayesian_polling_weight")),
-                    "Cycle cap": fmt_pct(row.get("cycle_max_polling_weight")),
-                    "Pre-boost weight": fmt_pct(
-                        row.get(
-                            "bayesian_polling_weight_capped_before_polling_confidence_accelerator"
-                        )
-                    ),
-                    "Confidence boost": fmt_pct(row.get("polling_confidence_boost")),
-                    "Final poll weight": fmt_pct(
-                        row.get(
-                            "bayesian_polling_weight_capped_after_polling_confidence_accelerator",
-                            row.get("bayesian_polling_weight"),
-                        )
-                    ),
-                    "Boost margin effect": fmt_margin(
-                        row.get("polling_confidence_margin_change_dem")
-                    ),
-                    "Posterior SD": fmt_num(
-                        row.get(
-                            "bayesian_posterior_sd_calibrated",
-                            row.get("bayesian_posterior_sd"),
-                        ),
-                        2,
-                    ),
+                    "Poll weight": fmt_pct(row.get("bayesian_polling_weight")),
+                    "Posterior SD": fmt_num(row.get("bayesian_posterior_sd"), 2),
                     "Final margin": fmt_margin(row.get("model_margin_dem")),
                     "Dem odds": fmt_pct(row.get("simulated_dem_win_prob")),
                     "Notes": row.get("fundamentals_notes", ""),

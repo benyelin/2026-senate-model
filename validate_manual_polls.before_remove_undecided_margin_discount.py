@@ -220,17 +220,17 @@ def normalize_manual_polls():
         df["allocated_share"] / 100
     ).clip(lower=0.50, upper=1.00)
 
-    # Preserve the poll's observed Democratic margin. A large undecided
-    # share should affect uncertainty or poll weight, not mechanically
-    # shrink the reported margin toward zero.
-    df["undecided_adjusted_dem_margin"] = df["dem_margin"]
+    df["undecided_adjusted_dem_margin"] = (
+        df["dem_margin"] * df["undecided_discount"]
+    )
 
     df["house_effect_adjusted_dem_margin"] = (
         df["dem_margin"] - df["house_effect_dem"]
     )
 
     df["final_poll_margin_dem"] = (
-        df["dem_margin"] - df["house_effect_dem"]
+        df["undecided_adjusted_dem_margin"]
+        - df["house_effect_dem"]
     )
 
     df["dem_margin_vs_top_opponent"] = (
@@ -269,12 +269,6 @@ def normalize_manual_polls():
         "chamber",
         "pollster",
         "pollster_grade",
-        "sponsor",
-        "poll_sponsor_type",
-        "partisan_sponsor_party",
-        "is_internal_poll",
-        "pollster_partisan_affiliation",
-        "partisan_pollster_review_notes",
         "start_date",
         "end_date",
         "mid_date",

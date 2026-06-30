@@ -132,39 +132,10 @@ def run_bayesian_update(
         suffixes=("", "_poll_generated"),
     )
 
-    # Only polling from polling_averages_generated.csv counts as current
-    # polling evidence. Do not preserve stale race_inputs.csv poll metadata.
-    merged["polling_margin_used"] = merged["polling_margin_dem_poll_generated"]
-
-    generated_metadata = {
-        "poll_count": "poll_count_poll_generated",
-        "total_poll_weight": "total_poll_weight_poll_generated",
-        "avg_poll_age_days": "avg_poll_age_days_poll_generated",
-    }
-
-    for target, generated_col in generated_metadata.items():
-        if generated_col in merged.columns:
-            merged[target] = pd.to_numeric(
-                merged[generated_col],
-                errors="coerce",
-            )
-        else:
-            merged[target] = pd.NA
-
-    # effective_poll_count generally has no suffix because the stale input
-    # version was removed before the merge.
-    if "effective_poll_count_poll_generated" in merged.columns:
-        merged["effective_poll_count"] = pd.to_numeric(
-            merged["effective_poll_count_poll_generated"],
-            errors="coerce",
-        )
-    elif "effective_poll_count" in merged.columns:
-        merged["effective_poll_count"] = pd.to_numeric(
-            merged["effective_poll_count"],
-            errors="coerce",
-        )
-    else:
-        merged["effective_poll_count"] = pd.NA
+    merged["polling_margin_used"] = merged["polling_margin_dem_poll_generated"].fillna(
+        merged["polling_margin_dem"]
+    )
+    merged = _refresh_poll_metadata_from_generated(merged)
 
     merged["poll_count"] = merged["poll_count"].fillna(0)
     merged["effective_poll_count"] = merged["effective_poll_count"].fillna(0)
@@ -174,23 +145,9 @@ def run_bayesian_update(
     # Use Kish effective poll count as the measure of independent polling
     # evidence. Raw total_poll_weight is retained for audit purposes only.
     effective_weight = merged["effective_poll_count"].clip(lower=0)
-
-    has_current_polling = (
-        merged["polling_margin_used"].notna()
-        & merged["poll_count"].gt(0)
-        & merged["effective_poll_count"].gt(0)
-    )
-
     polling_sd = total_error_sd / np.sqrt(1 + effective_weight)
-    polling_sd = np.where(
-        merged["poll_count"] < 2,
-        polling_sd * sparse_poll_penalty,
-        polling_sd,
-    )
+    polling_sd = np.where(merged["poll_count"] < 2, polling_sd * sparse_poll_penalty, polling_sd)
     polling_sd = np.maximum(polling_sd, min_polling_sd)
-
-    # No current generated poll means no polling evidence.
-    polling_sd = np.where(has_current_polling, polling_sd, np.inf)
 
     merged["prior_margin_dem"] = merged["fundamentals_margin_dem"].astype(float)
     merged["prior_sd"] = prior_sd
@@ -199,20 +156,10 @@ def run_bayesian_update(
     prior_var = merged["prior_sd"] ** 2
     poll_var = merged["polling_sd"] ** 2
 
-    polling_margin_for_calc = merged["polling_margin_used"].fillna(
-        merged["prior_margin_dem"]
-    )
-
     merged["posterior_margin_dem"] = (
         merged["prior_margin_dem"] / prior_var
-        + polling_margin_for_calc / poll_var
+        + merged["polling_margin_used"] / poll_var
     ) / ((1 / prior_var) + (1 / poll_var))
-
-    merged["posterior_margin_dem"] = np.where(
-        has_current_polling,
-        merged["posterior_margin_dem"],
-        merged["prior_margin_dem"],
-    )
 
     merged["posterior_sd"] = np.sqrt(1 / ((1 / prior_var) + (1 / poll_var)))
     merged["bayesian_polling_weight"] = (1 / poll_var) / ((1 / prior_var) + (1 / poll_var))

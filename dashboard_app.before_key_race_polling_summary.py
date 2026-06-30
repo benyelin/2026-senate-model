@@ -154,8 +154,6 @@ with tab_overview:
     snapshot_races = read_csv_safe(INPUTS / "race_inputs.csv")
     snapshot_stats = read_csv_safe(OUTPUTS / "race_stats.csv")
     snapshot_scenarios = read_csv_safe(OUTPUTS / "scenario_summary.csv")
-    snapshot_polling = read_csv_safe(INPUTS / "polling_averages_generated.csv")
-    snapshot_bayes = read_csv_safe(INPUTS / "bayesian_update_generated.csv")
 
     if not snapshot_env.empty:
         env = snapshot_env.iloc[-1]
@@ -221,59 +219,6 @@ with tab_overview:
                 how="left"
             )
 
-        if not snapshot_polling.empty and "state" in snapshot_polling.columns:
-            polling_view = snapshot_polling.copy()
-            polling_view["state"] = (
-                polling_view["state"]
-                .astype(str)
-                .str.strip()
-                .str.upper()
-            )
-
-            polling_cols = [
-                c for c in [
-                    "state",
-                    "polling_margin_dem",
-                    "poll_count",
-                    "effective_poll_count",
-                    "avg_poll_age_days",
-                    "largest_pollster_weight_share",
-                ]
-                if c in polling_view.columns
-            ]
-
-            races_view = races_view.merge(
-                polling_view[polling_cols],
-                on="state",
-                how="left",
-                suffixes=("", "_polling_snapshot"),
-            )
-
-        if not snapshot_bayes.empty and "state" in snapshot_bayes.columns:
-            bayes_view = snapshot_bayes.copy()
-            bayes_view["state"] = (
-                bayes_view["state"]
-                .astype(str)
-                .str.strip()
-                .str.upper()
-            )
-
-            bayes_cols = [
-                c for c in [
-                    "state",
-                    "recent_poll_count_45d",
-                    "polling_confidence_boost",
-                    "bayesian_polling_weight_capped_after_polling_confidence_accelerator",
-                ]
-                if c in bayes_view.columns
-            ]
-
-            races_view = races_view.merge(
-                bayes_view[bayes_cols],
-                on="state",
-                how="left",
-            )
-
         default_key_states = ["AK", "FL", "GA", "ME", "NC", "OH", "TX"]
         key_states = [s for s in default_key_states if s in races_view["state"].values]
 
@@ -294,18 +239,7 @@ with tab_overview:
                     "Bayes margin": _fmt_margin(row.get("bayesian_model_margin_dem")),
                     "Final margin": _fmt_margin(row.get("model_margin_dem")),
                     "Dem win odds": _fmt_pct(row.get("simulated_dem_win_prob")),
-                    "Poll avg.": _fmt_margin(row.get("polling_margin_dem")),
-                    "Polls": _fmt_num(row.get("poll_count")),
-                    "Effective polls": _fmt_num(row.get("effective_poll_count")),
-                    "Recent polls": _fmt_num(row.get("recent_poll_count_45d")),
-                    "Poll weight": _fmt_pct(
-                        row.get(
-                            "bayesian_polling_weight_capped_after_polling_confidence_accelerator",
-                            row.get("bayesian_polling_weight"),
-                        )
-                    ),
-                    "Confidence boost": _fmt_pct(row.get("polling_confidence_boost")),
-                    "Avg. poll age": _fmt_num(row.get("avg_poll_age_days")),
+                    "Poll weight": _fmt_pct(row.get("bayesian_polling_weight")),
                     "Uncertainty": _fmt_num(row.get("bayesian_posterior_sd")),
                 }
             )
