@@ -496,23 +496,11 @@ if __name__ == "__main__":
                 else POST_LABOR_DAY_ABSOLUTE_CAP
             )
 
-            # Recompute the ordinary cycle cap inside this finalizer because
-            # the value created inside main() is not in this block's scope.
-            accelerator_days_out = max(
-                0,
-                (pd.Timestamp("2026-11-03") - today).days,
-            )
-            accelerator_cycle_cap = max_polling_weight_for_days_out(
-                accelerator_days_out
-            )
-
             # The confidence accelerator may raise the early-cycle ceiling,
             # but it must never suppress the ordinary cycle cap later in the
-            # campaign.
-            absolute_cap = max(
-                accelerator_floor_cap,
-                accelerator_cycle_cap,
-            )
+            # campaign. This allows polling to outweigh fundamentals near
+            # Election Day.
+            absolute_cap = max(accelerator_floor_cap, max_cycle_cap)
             merged["polling_confidence_absolute_cap"] = absolute_cap
 
             if "bayesian_polling_weight_capped" not in merged.columns:

@@ -12,43 +12,15 @@ def compute_days_out():
 
 
 def max_polling_weight_for_days_out(days_out):
-    """
-    Smoothly increase the maximum polling weight as Election Day approaches.
-
-    Anchor points preserve the model's existing intended milestones:
-      180 days out: 12%
-      120 days out: 18%
-       60 days out: 35%
-       30 days out: 50%
-        0 days out: 70%
-    """
-    try:
-        days_out = float(days_out)
-    except Exception:
-        days_out = 180.0
-
-    days_out = max(0.0, days_out)
-
-    anchors = [
-        (180.0, 0.12),
-        (120.0, 0.18),
-        (60.0, 0.35),
-        (30.0, 0.50),
-        (0.0, 0.70),
-    ]
-
-    if days_out >= anchors[0][0]:
-        return anchors[0][1]
-
-    for (older_day, older_weight), (newer_day, newer_weight) in zip(
-        anchors[:-1],
-        anchors[1:],
-    ):
-        if newer_day <= days_out <= older_day:
-            progress = (older_day - days_out) / (older_day - newer_day)
-            return older_weight + progress * (newer_weight - older_weight)
-
-    return anchors[-1][1]
+    if days_out > 180:
+        return 0.12
+    if days_out > 120:
+        return 0.18
+    if days_out > 60:
+        return 0.35
+    if days_out > 30:
+        return 0.50
+    return 0.70
 
 
 def poll_count_multiplier(poll_count):
@@ -490,28 +462,10 @@ if __name__ == "__main__":
             merged["recent_poll_count_45d"] = safe_num(merged["recent_poll_count_45d"], 0).astype(int)
             merged["polling_confidence_boost"] = safe_num(merged["polling_confidence_boost"], 0.0)
 
-            accelerator_floor_cap = (
+            absolute_cap = (
                 PRE_LABOR_DAY_ABSOLUTE_CAP
                 if today < LABOR_DAY_2026
                 else POST_LABOR_DAY_ABSOLUTE_CAP
-            )
-
-            # Recompute the ordinary cycle cap inside this finalizer because
-            # the value created inside main() is not in this block's scope.
-            accelerator_days_out = max(
-                0,
-                (pd.Timestamp("2026-11-03") - today).days,
-            )
-            accelerator_cycle_cap = max_polling_weight_for_days_out(
-                accelerator_days_out
-            )
-
-            # The confidence accelerator may raise the early-cycle ceiling,
-            # but it must never suppress the ordinary cycle cap later in the
-            # campaign.
-            absolute_cap = max(
-                accelerator_floor_cap,
-                accelerator_cycle_cap,
             )
             merged["polling_confidence_absolute_cap"] = absolute_cap
 
